@@ -1,0 +1,51 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# JavaScript / frontend output
+node_modules/
+.pnpm-store/
+dist/
+build/
+coverage/
+.vite/
+
+# Python output and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Django/runtime data
+db.sqlite3
+media/
+staticfiles/
+*.log
+
+# IDE and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Microsoft Office temporary files
+~$*
+
+# Generated documentation review artifacts
+docs/_plan_render/
+docs/_agile_plan_render/
+docs/kiosk-section-plan-assets/
+
+# Superseded planning artifact
+docs/AutoPharm-Incremental-Implementation-Plan.docx
