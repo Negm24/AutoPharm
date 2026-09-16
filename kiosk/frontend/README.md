@@ -11,6 +11,12 @@ Frontend foundation for the AutoPharm pharmacy kiosk. This is **one React + Vite
 - Session state via Zustand
 - Tailwind CSS with semantic theme tokens in `src/index.css`
 
+## Current scope
+
+This repository contains the **Kiosk frontend only** — one React + Vite + TypeScript application for the pharmacy kiosk touchscreen experience.
+
+**AutoDoc** (the clinician web portal) is a planned separate React + Vite application. It is **not** implemented in this repository. When built, it will share the design system and communicate with the same Django backend, but will have its own routes, build, and authentication policy.
+
 ## Project structure
 
 ```

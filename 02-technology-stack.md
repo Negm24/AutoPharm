@@ -11,13 +11,13 @@
 
 ## 1. Decision summary
 
-AutoPharm will use a **modular monolith** architecture with **one React + Vite + TypeScript frontend application**, one authoritative Django backend, PostgreSQL, and a small local Python service for kiosk hardware.
+AutoPharm will use a **modular monolith** architecture with two independent React applications, one authoritative Django backend, PostgreSQL, and a small local Python service for kiosk hardware.
 
 | Area | Confirmed choice |
 |---|---|
-|| Kiosk frontend | React + Vite |
-|| AutoDoc workflow | React + Vite (same application) |
-|| Frontend language | TypeScript only for application source code |
+| Kiosk frontend | React + Vite |
+| Doctor portal | React + Vite |
+| Frontend language | TypeScript only for application and shared-package source code |
 | Styling | Tailwind CSS plus a shared AutoPharm design system |
 | Backend | Python + Django + Django REST Framework |
 | API style | Versioned REST API with OpenAPI documentation |
@@ -25,13 +25,13 @@ AutoPharm will use a **modular monolith** architecture with **one React + Vite +
 | Supabase role | Managed PostgreSQL infrastructure only, not the application backend |
 | Background work | Celery + Redis |
 | Kiosk hardware | Local Python device-agent service |
-|| Repository | Single React + Vite + TypeScript frontend application with separate Django backend |
+| Repository | GitHub monorepo |
 | Versioning | Semantic Versioning and GitHub Releases |
 | Design principles | Pragmatic SOLID, composition, and interface-driven external boundaries |
 
 The principal architectural rules are:
 
-> Django is the only authoritative application backend. The frontend and AutoDoc workflows never access PostgreSQL or Supabase directly.
+> Django is the only authoritative application backend. The kiosk and AutoDoc never access PostgreSQL or Supabase directly.
 
 > SOLID is applied where it protects business rules, integrations, or testability. Simple code remains simple; abstractions are not created merely to satisfy a pattern.
 
@@ -40,13 +40,13 @@ The principal architectural rules are:
 ## 2. High-level architecture
 
 ```text
-┌──────────────────────────┐   ┌──────────────────────────┐
-│ AutoPharm Kiosk          │   │ AutoDoc workflow         │
-│ React + Vite             │   │ React + Vite (same app)  │
-│ 1024×600 touchscreen     │   │ Clinician web portal     │
-└────────────┬─────────────┘   └────────────┬─────────────┘
-             │ HTTPS / REST API            │ HTTPS / REST API
-             └────────────┬────────────────┘
+┌──────────────────────┐       ┌──────────────────────┐
+│ AutoPharm Kiosk      │       │ AutoDoc             │
+│ React + Vite         │       │ React + Vite         │
+│ 1024×600 touchscreen │       │ Doctor web portal    │
+└──────────┬───────────┘       └──────────┬───────────┘
+           │ HTTPS / REST API             │ HTTPS / REST API
+           └──────────────┬───────────────┘
                           ▼
                ┌─────────────────────┐
                │ Django Backend      │
@@ -66,13 +66,13 @@ The principal architectural rules are:
             └─────────────────┘     └──────────────────┘
 
 ┌──────────────────────┐
-│ Python Device Agent  │◄──── localhost ──── AutoPharm Kiosk (same app)
+│ Python Device Agent  │◄──── localhost ──── AutoPharm Kiosk
 │ Printer / dispenser  │
 │ scanner / sensors    │
 └──────────────────────┘
 ```
 
-The frontend is a single React + Vite + TypeScript application. The kiosk and AutoDoc workflows share the same application shell, build, dependencies, routing, i18n, theme, and session/authorization infrastructure, but remain functionally separate with distinct routes, UIs, and authorization boundaries.
+The two frontends share design assets and API contracts but remain independently buildable and deployable.
 
 The central backend is authoritative for accounts, prescriptions, prices, orders, and fleet-wide records. Each physical kiosk also owns a small, durable local operational journal through the device agent so an interrupted OTC cash dispense can be reconciled after a crash or network outage. This local journal contains operational identifiers and outcomes, not prescription or patient data.
 
@@ -80,27 +80,11 @@ The central backend is authoritative for accounts, prescriptions, prices, orders
 
 ## 3. Frontend applications
 
-### 3.1 Frontend application
+### 3.1 AutoPharm Kiosk
 
-AutoPharm has **one React + Vite + TypeScript application** that serves both the kiosk experience and the AutoDoc clinician workflow. The two experiences share the same application shell, build, dependencies, routing, i18n, theme, and session/authorization infrastructure, but they remain functionally separate with distinct routes, UIs, and authorization boundaries.
+The kiosk is a React single-page application built with Vite. It is designed specifically for the fixed 1024×600 touchscreen described in the requirements.
 
-The application's responsibilities include:
-
-- Session and language selection.
-- Catalogue browsing and search.
-- Symptom-guidance presentation.
-- Customer authentication.
-- Cart, insurance, payment, and dispensing flows.
-- Prescription retrieval and selection.
-- AutoDoc clinician authentication, patient lookup, prescription drafting, signing, revocation, and audit-history viewing where authorized.
-- Designed offline and failure states.
-- Communication with the local device agent.
-
-The frontend application is not trusted to make authorization, pricing, prescribing, payment, or dispensing-integrity decisions. Those decisions are enforced by the backend or the appropriate external/local service.
-
-### 3.2 Kiosk experience
-
-The kiosk experience is the 1024×600 touchscreen flow described in the requirements. Its responsibilities include:
+Its responsibilities include:
 
 - Session and language selection.
 - Catalogue browsing and search.
@@ -111,15 +95,17 @@ The kiosk experience is the 1024×600 touchscreen flow described in the requirem
 - Designed offline and failure states.
 - Communication with the local device agent.
 
-The kiosk experience is not trusted to make authorization, pricing, prescribing, payment, or dispensing-integrity decisions. Those decisions are enforced by the backend or the appropriate external/local service.
+The kiosk frontend is not trusted to make authorization, pricing, prescribing, payment, or dispensing-integrity decisions. Those decisions are enforced by the backend or the appropriate external/local service.
 
-### 3.3 AutoDoc experience
+### 3.2 AutoDoc
 
-The AutoDoc workflow is a clinician/prescribing experience inside the same React + Vite + TypeScript application. It is functionally separate from the kiosk experience and has:
+AutoDoc is an independent React + Vite web application for prescribing clinicians and authorized clinical staff.
 
-- Its own routes within the application.
-- Its own login and authentication experience.
-- A different authentication policy from the kiosk.
+It shares AutoPharm's visual identity, but it has:
+
+- Its own application entry point and build.
+- Its own routes and login experience.
+- A different authentication policy.
 - Desktop-oriented layouts rather than kiosk layouts.
 - Strict role and prescribing-permission controls.
 
@@ -133,7 +119,7 @@ Its initial scope is deliberately narrow:
 - Current and previous prescription status.
 - Audit-history viewing where authorized.
 
-The AutoDoc workflow connects to the kiosk only through the central backend. It does not communicate directly with kiosk terminals. A prescription issued through AutoDoc is stored centrally and later retrieved by the authenticated patient at any kiosk.
+AutoDoc connects to the kiosk only through the central backend. It does not communicate directly with kiosk terminals. A prescription issued through AutoDoc is stored centrally and later retrieved by the authenticated patient at any kiosk.
 
 AutoDoc submits a structured prescription—not a PDF or image upload—as the authoritative clinical record. The payload contains the patient identifier, prescriber, issue and expiry timestamps, medicine identifiers, dosage instructions, quantities, refill rules, and signature metadata. A rendered PDF may be generated as a human-readable representation, but it is never the source of truth.
 
@@ -141,14 +127,14 @@ The clinician must select a uniquely matched patient record and confirm identity
 
 ### 3.3 Why React + Vite
 
-React is preferred over Vanilla JavaScript because the application contains complex state, reusable components, validation, error handling, and asynchronous workflows.
+React is preferred over Vanilla JavaScript because both applications contain complex state, reusable components, validation, error handling, and asynchronous workflows.
 
 Vite is preferred over Next.js because:
 
-- Neither the kiosk nor the AutoDoc workflow requires search-engine optimization.
+- Neither application requires search-engine optimization.
 - Server-side rendering is not required.
 - Django is the authoritative backend.
-- The application should remain a simple static build.
+- The frontends should remain simple static builds.
 - Vite provides fast development and a small deployment surface.
 
 Next.js would introduce a second server-side application layer and blur the backend boundary without delivering a meaningful benefit to this project.
@@ -157,7 +143,7 @@ Next.js would introduce a second server-side application layer and blur the back
 
 ## 4. TypeScript decision
 
-TypeScript is the confirmed source language for the single React + Vite + TypeScript application. New application source files shall use `.ts` or `.tsx`, not `.js` or `.jsx`.
+TypeScript is the confirmed source language for both React applications and all shared frontend packages. New application source files shall use `.ts` or `.tsx`, not `.js` or `.jsx`.
 
 The team is more familiar with JavaScript, so the project will avoid advanced generics, type-level programming, and unnecessary abstractions. TypeScript should look like ordinary JavaScript with explicit application contracts. This limits the learning cost without weakening type safety.
 
@@ -165,8 +151,8 @@ JavaScript files are permitted only where a tool requires them, for generated ou
 
 TypeScript is valuable here because the system has:
 
-- Five developers working on the same codebase.
-- One frontend application with multiple workflows consuming the same API.
+- Five developers working on shared code.
+- Multiple frontends consuming the same API.
 - Prescription, insurance, order, payment, and dispensing data with many fields.
 - Several user roles and permission states.
 - Complex status transitions.
@@ -225,11 +211,17 @@ Sensitive or authoritative data must not rely solely on frontend storage. Prescr
 
 Tailwind CSS will be used as the styling engine, but Tailwind utility classes alone do not constitute the design system.
 
-The application will contain shared design tokens and reusable components in `src/components/`:
+The repository will contain shared design tokens and reusable components:
 
 ```text
-src/
-  components/
+packages/
+  design-tokens/
+    colors.css
+    typography.css
+    spacing.css
+    elevation.css
+    motion.css
+  ui/
     Button/
     TextField/
     NumberPad/
@@ -1033,7 +1025,7 @@ Database backups and a tested restore procedure are required for staging/demo re
 
 ## 14. Repository structure
 
-AutoPharm will use a **React + Vite + TypeScript application** with a separate Django backend. The frontend is the single application described in §3. The Django backend may be deployed as separate modules.
+AutoPharm will use a GitHub monorepo.
 
 ```text
 AutoPharm/
@@ -1042,12 +1034,23 @@ AutoPharm/
     autodoc-web/
     device-agent/
   backend/
-  shared/
+  packages/
     ui/
     design-tokens/
+    api-client/
+    validation/
+    i18n/
+  infrastructure/
+    docker/
+    nginx/
+  docs/
+  tests/
+  package.json
+  pnpm-workspace.yaml
+  compose.yaml
 ```
 
-- Frontend development server may run on the developer machine for faster hot reload.
+TypeScript packages use `pnpm` workspaces. Python dependency management should use `uv` or Poetry; `uv` is preferred for its speed and simple lockfile workflow.
 
 Docker Compose should provide at minimum:
 
@@ -1056,7 +1059,7 @@ Docker Compose should provide at minimum:
 - Django API.
 - Celery worker when introduced.
 
-The frontend may run directly on developer machines for faster hot reload.
+The frontend development servers may run directly on developer machines for faster hot reload.
 
 ---
 
@@ -1178,7 +1181,7 @@ The version should be available in:
 | Alternative | Resolution |
 |---|---|
 | Vanilla JavaScript frontend | Rejected; insufficient structure for the application complexity |
-- Mixed JavaScript/TypeScript application source | Rejected; application source uses TypeScript consistently
+| Mixed JavaScript/TypeScript application source | Rejected; application and shared-package source use TypeScript consistently |
 | Next.js as frontend and backend | Rejected; duplicates Django responsibilities and provides no needed SSR benefit |
 | Flask as the main backend | Rejected; Django provides more of the required security and data-management foundation |
 | Node.js main backend | Rejected; the selected Python ecosystem better matches integrations and device tooling |
@@ -1187,7 +1190,7 @@ The version should be available in:
 | Microservices | Rejected for the graduation-project team and scope |
 | GraphQL | Rejected initially; REST is simpler for this system |
 | Redux by default | Rejected; TanStack Query plus local state is sufficient initially |
-- One combined kiosk/doctor frontend | Kept: the frontend is a single React + Vite + TypeScript application; the kiosk and AutoDoc workflows are functionally separate feature areas with distinct routes, UIs, and authorization boundaries
+| One combined kiosk/doctor frontend | Rejected; AutoDoc is an independent application and security boundary |
 | Deep inheritance-based OOP | Rejected; use interface-driven composition and small focused objects |
 | Repository class for every Django model | Rejected; use the ORM/querysets unless a meaningful boundary exists |
 | One database transaction across payment and hardware | Impossible/rejected; use durable states, idempotency, and compensation |
@@ -1197,7 +1200,7 @@ The version should be available in:
 
 ## 19. Implementation order
 
-1. Create the application and development tooling.
+1. Create the monorepo and development tooling.
 2. Create Django, PostgreSQL, the initial domain model, and only the core interfaces justified by external or replaceable boundaries.
 3. Define identity, terminal identity, audit events, idempotency records, and state-machine conventions.
 4. Establish OpenAPI and the shared frontend API client.
@@ -1230,16 +1233,7 @@ Authenticated local Python kiosk device agent
 Pragmatic SOLID + dependency inversion + composition
 Explicit state machines + idempotency + transactional outbox
 Non-sensitive offline cache + durable recovery journal
-- React + Vite + TypeScript (single application)
-- Tailwind CSS + shared AutoPharm design system
-- Django + Django REST Framework
-- PostgreSQL hosted on Supabase
-- Celery + Redis
-- Authenticated local Python kiosk device agent
-- Pragmatic SOLID + dependency inversion + composition
-- Explicit state machines + idempotency + transactional outbox
-- Non-sensitive offline cache + durable recovery journal
-- Semantic Versioning
+GitHub monorepo + Semantic Versioning
 ```
 
-This architecture keeps the project understandable for five developers, supports the kiosk and AutoDoc as workflows within one React application, preserves transactional correctness without pretending external systems share a database transaction, allows Python-based integrations, supports the required offline degradation, and avoids letting a hosting platform replace the project's own backend design.
+This architecture keeps the project understandable for five developers, supports the kiosk and AutoDoc as separate applications, preserves transactional correctness without pretending external systems share a database transaction, allows Python-based integrations, supports the required offline degradation, and avoids letting a hosting platform replace the project's own backend design.
