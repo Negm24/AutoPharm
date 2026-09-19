@@ -1,0 +1,1 @@
+"""AutoPharm domain applications."""

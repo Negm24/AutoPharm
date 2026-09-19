@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "title": "AutoPharm Authentication ERD v1.1",
+  "description": "Initial authentication schema containing users and rotating AutoDoc refresh tokens.",
+  "diagrams": [
+    {
+      "id": "v_auth_1_1",
+      "title": "AutoPharm Authentication ERD v1.1",
+      "description": "A user may own multiple refresh tokens. A refresh token may be replaced by one newer token during rotation.",
+      "accessibility": "Entity relationship diagram with USERS and REFRESH_TOKENS. USERS has a one-to-zero-or-many relationship with REFRESH_TOKENS. REFRESH_TOKENS has an optional one-to-one self-reference through replaced_by_id.",
+      "kind": "er",
+      "data": {
+        "entities": [
+          {
+            "id": "USERS",
+            "attributes": [
+              "VARCHAR_14 id PK",
+              "VARCHAR_100 first_name",
+              "VARCHAR_100 last_name",
+              "VARCHAR_16 phone_number UK",
+              "CHAR_2 phone_country_code",
+              "DATE date_of_birth",
+              "VARCHAR_255 credential_hash",
+              "VARCHAR_10 credential_kind",
+              "VARCHAR_254 email UK",
+              "BOOLEAN is_disabled",
+              "TIMESTAMPTZ created_at"
+            ]
+          },
+          {
+            "id": "REFRESH_TOKENS",
+            "attributes": [
+              "UUID id PK",
+              "VARCHAR_14 user_id FK",
+              "CHAR_64 token_hash UK",
+              "TIMESTAMPTZ expires_at",
+              "TIMESTAMPTZ revoked_at",
+              "TIMESTAMPTZ created_at",
+              "VARCHAR_512 user_agent",
+              "INET ip_address",
+              "UUID replaced_by_id FK"
+            ]
+          }
+        ],
+        "relationships": [
+          {
+            "from": "USERS",
+            "to": "REFRESH_TOKENS",
+            "cardinality": "||--o{",
+            "label": "owns"
+          },
+          {
+            "from": "REFRESH_TOKENS",
+            "to": "REFRESH_TOKENS",
+            "cardinality": "o|--o|",
+            "label": "replaced_by"
+          }
+        ]
+      }
+    }
+  ]
+}
