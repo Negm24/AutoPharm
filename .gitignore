@@ -7,13 +7,14 @@
 *.p12
 *.pfx
 
-# JavaScript / frontend output
+# TypeScript frontend dependencies and generated output
 node_modules/
 .pnpm-store/
 dist/
 build/
 coverage/
 .vite/
+*.tsbuildinfo
 
 # Python output and virtual environments
 __pycache__/
@@ -24,6 +25,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
 
 # Django/runtime data

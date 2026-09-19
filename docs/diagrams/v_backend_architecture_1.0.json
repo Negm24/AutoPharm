@@ -1,0 +1,106 @@
+{
+  "version": 2,
+  "title": "AutoPharm Backend Architecture v1.0",
+  "description": "Django modular-monolith repository structure and the dependency direction used inside each domain application.",
+  "diagrams": [
+    {
+      "id": "backend_repository_structure",
+      "title": "Backend repository structure and incremental app growth",
+      "description": "The accounts app is the first implemented domain. Additional Django apps are added incrementally without reorganizing existing domains.",
+      "accessibility": "A hierarchy beginning at the backend directory. It contains Django configuration, the apps directory, shared code, integration tests, runtime entry points, dependency files, and environment configuration. The apps directory contains the current accounts app and three groups of future domain apps. The accounts app owns its models, migrations, API, services, security code, and tests.",
+      "kind": "flowchart",
+      "data": {
+        "direction": "TB",
+        "nodes": [
+          {"id": "backend", "label": "backend/ - Django modular monolith", "class": "root"},
+          {"id": "config", "label": "config/ - settings, root URLs, ASGI, WSGI", "class": "core"},
+          {"id": "apps", "label": "apps/ - feature-owned Django applications", "class": "core"},
+          {"id": "common", "label": "common/ - small genuinely shared primitives", "class": "core"},
+          {"id": "integration_tests", "label": "tests/integration/ - cross-domain tests", "class": "core"},
+          {"id": "runtime", "label": "manage.py and Dockerfile", "class": "core"},
+          {"id": "dependencies", "label": "pyproject.toml and uv.lock", "class": "core"},
+          {"id": "environment", "label": ".env and .env.example", "class": "core"},
+
+          {"id": "accounts", "label": "accounts/ - CURRENT v1 authentication", "class": "current"},
+          {"id": "account_models", "label": "models/ - User and RefreshToken", "class": "currentDetail"},
+          {"id": "account_migrations", "label": "migrations/ - schema history", "class": "currentDetail"},
+          {"id": "account_api", "label": "api/ - URLs, serializers, views", "class": "currentDetail"},
+          {"id": "account_services", "label": "services/ - application use cases", "class": "currentDetail"},
+          {"id": "account_security", "label": "security/ - access and refresh tokens", "class": "currentDetail"},
+          {"id": "account_tests", "label": "tests/ - accounts-owned tests", "class": "currentDetail"},
+
+          {"id": "clinical_apps", "label": "FUTURE clinical apps - patients, clinicians, prescriptions", "class": "future"},
+          {"id": "commerce_apps", "label": "FUTURE commerce apps - catalogue, inventory, orders, payments, insurance", "class": "future"},
+          {"id": "operations_apps", "label": "FUTURE operations apps - dispensing, terminals, receipts, notifications, audit, integrations", "class": "future"}
+        ],
+        "edges": [
+          {"from": "backend", "to": "config", "label": "contains", "arrow": "---"},
+          {"from": "backend", "to": "apps", "label": "contains", "arrow": "---"},
+          {"from": "backend", "to": "common", "label": "contains", "arrow": "---"},
+          {"from": "backend", "to": "integration_tests", "label": "contains", "arrow": "---"},
+          {"from": "backend", "to": "runtime", "label": "contains", "arrow": "---"},
+          {"from": "backend", "to": "dependencies", "label": "contains", "arrow": "---"},
+          {"from": "backend", "to": "environment", "label": "contains", "arrow": "---"},
+
+          {"from": "apps", "to": "accounts", "label": "first increment", "arrow": "-->"},
+          {"from": "accounts", "to": "account_models", "label": "owns", "arrow": "---"},
+          {"from": "accounts", "to": "account_migrations", "label": "owns", "arrow": "---"},
+          {"from": "accounts", "to": "account_api", "label": "owns", "arrow": "---"},
+          {"from": "accounts", "to": "account_services", "label": "owns", "arrow": "---"},
+          {"from": "accounts", "to": "account_security", "label": "owns", "arrow": "---"},
+          {"from": "accounts", "to": "account_tests", "label": "owns", "arrow": "---"},
+
+          {"from": "apps", "to": "clinical_apps", "label": "added incrementally", "arrow": "-.->"},
+          {"from": "apps", "to": "commerce_apps", "label": "added incrementally", "arrow": "-.->"},
+          {"from": "apps", "to": "operations_apps", "label": "added incrementally", "arrow": "-.->"}
+        ]
+      },
+      "styles": [
+        {"name": "root", "definition": "fill:#172554,stroke:#1d4ed8,color:#ffffff,stroke-width:2px"},
+        {"name": "core", "definition": "fill:#dbeafe,stroke:#2563eb,color:#172554"},
+        {"name": "current", "definition": "fill:#dcfce7,stroke:#15803d,color:#14532d,stroke-width:2px"},
+        {"name": "currentDetail", "definition": "fill:#f0fdf4,stroke:#22c55e,color:#14532d"},
+        {"name": "future", "definition": "fill:#f3f4f6,stroke:#6b7280,color:#374151,stroke-dasharray:5 5"}
+      ]
+    },
+    {
+      "id": "domain_app_dependency_direction",
+      "title": "Dependency direction inside every domain app",
+      "description": "Each app repeats the same small structure. HTTP concerns stay at the API edge, business workflows live in services, and persistence stays in Django models and querysets.",
+      "accessibility": "A left-to-right dependency flow from API URLs, serializers, and views to application services, then Django models and querysets, and finally PostgreSQL. Security policies and future external adapter interfaces are called by application services. App-owned tests verify the API, services, models, and security components.",
+      "kind": "flowchart",
+      "data": {
+        "direction": "LR",
+        "nodes": [
+          {"id": "api", "label": "API - URLs, serializers, thin views", "class": "apiLayer"},
+          {"id": "services", "label": "Services - named business use cases and transactions", "class": "serviceLayer"},
+          {"id": "models", "label": "Models and querysets - persistence and constraints", "class": "modelLayer"},
+          {"id": "postgres", "label": "PostgreSQL", "class": "database"},
+          {"id": "security", "label": "Security policies - hashing and tokens", "class": "support"},
+          {"id": "adapters", "label": "Future external adapters - SMS, email, payment, hardware", "class": "future"},
+          {"id": "tests", "label": "App-owned tests", "class": "tests"}
+        ],
+        "edges": [
+          {"from": "api", "to": "services", "label": "calls", "arrow": "-->"},
+          {"from": "services", "to": "models", "label": "uses", "arrow": "-->"},
+          {"from": "models", "to": "postgres", "label": "Django ORM", "arrow": "-->"},
+          {"from": "services", "to": "security", "label": "applies", "arrow": "-->"},
+          {"from": "services", "to": "adapters", "label": "depends on interfaces", "arrow": "-.->"},
+          {"from": "tests", "to": "api", "label": "verifies", "arrow": "-.->"},
+          {"from": "tests", "to": "services", "label": "verifies", "arrow": "-.->"},
+          {"from": "tests", "to": "models", "label": "verifies", "arrow": "-.->"},
+          {"from": "tests", "to": "security", "label": "verifies", "arrow": "-.->"}
+        ]
+      },
+      "styles": [
+        {"name": "apiLayer", "definition": "fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e"},
+        {"name": "serviceLayer", "definition": "fill:#ede9fe,stroke:#7c3aed,color:#4c1d95,stroke-width:2px"},
+        {"name": "modelLayer", "definition": "fill:#fef3c7,stroke:#d97706,color:#78350f"},
+        {"name": "database", "definition": "fill:#172554,stroke:#1d4ed8,color:#ffffff,stroke-width:2px"},
+        {"name": "support", "definition": "fill:#fee2e2,stroke:#dc2626,color:#7f1d1d"},
+        {"name": "future", "definition": "fill:#f3f4f6,stroke:#6b7280,color:#374151,stroke-dasharray:5 5"},
+        {"name": "tests", "definition": "fill:#dcfce7,stroke:#16a34a,color:#14532d"}
+      ]
+    }
+  ]
+}

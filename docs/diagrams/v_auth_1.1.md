@@ -1,0 +1,41 @@
+# AutoPharm Authentication ERD v1.1
+
+Initial authentication schema containing users and rotating AutoDoc refresh tokens.
+
+## AutoPharm Authentication ERD v1.1
+
+A user may own multiple refresh tokens. A refresh token may be replaced by one newer token during rotation.
+
+<!-- mermaid:id=v_auth_1_1 -->
+```mermaid
+erDiagram
+  accTitle: AutoPharm Authentication ERD v1.1
+  accDescr: Entity relationship diagram with USERS and REFRESH_TOKENS. USERS has a one-to-zero-or-many relationship with REFRESH_TOKENS. REFRESH_TOKENS has an optional one-to-one self-reference through replaced_by_id.
+  USERS {
+    VARCHAR_14 id PK
+    VARCHAR_100 first_name
+    VARCHAR_100 last_name
+    VARCHAR_16 phone_number UK
+    CHAR_2 phone_country_code
+    DATE date_of_birth
+    VARCHAR_255 credential_hash
+    VARCHAR_10 credential_kind
+    VARCHAR_254 email UK
+    BOOLEAN is_disabled
+    TIMESTAMPTZ created_at
+  }
+  REFRESH_TOKENS {
+    UUID id PK
+    VARCHAR_14 user_id FK
+    CHAR_64 token_hash UK
+    TIMESTAMPTZ expires_at
+    TIMESTAMPTZ revoked_at
+    TIMESTAMPTZ created_at
+    VARCHAR_512 user_agent
+    INET ip_address
+    UUID replaced_by_id FK
+  }
+  USERS ||--o{ REFRESH_TOKENS : "owns"
+  REFRESH_TOKENS o|--o| REFRESH_TOKENS : "replaced_by"
+%% portable-canonical-v2:eyJhY2Nlc3NpYmlsaXR5IjoiRW50aXR5IHJlbGF0aW9uc2hpcCBkaWFncmFtIHdpdGggVVNFUlMgYW5kIFJFRlJFU0hfVE9LRU5TLiBVU0VSUyBoYXMgYSBvbmUtdG8temVyby1vci1tYW55IHJlbGF0aW9uc2hpcCB3aXRoIFJFRlJFU0hfVE9LRU5TLiBSRUZSRVNIX1RPS0VOUyBoYXMgYW4gb3B0aW9uYWwgb25lLXRvLW9uZSBzZWxmLXJlZmVyZW5jZSB0aHJvdWdoIHJlcGxhY2VkX2J5X2lkLiIsImRhdGEiOnsiZW50aXRpZXMiOlt7ImF0dHJpYnV0ZXMiOlsiVkFSQ0hBUl8xNCBpZCBQSyIsIlZBUkNIQVJfMTAwIGZpcnN0X25hbWUiLCJWQVJDSEFSXzEwMCBsYXN0X25hbWUiLCJWQVJDSEFSXzE2IHBob25lX251bWJlciBVSyIsIkNIQVJfMiBwaG9uZV9jb3VudHJ5X2NvZGUiLCJEQVRFIGRhdGVfb2ZfYmlydGgiLCJWQVJDSEFSXzI1NSBjcmVkZW50aWFsX2hhc2giLCJWQVJDSEFSXzEwIGNyZWRlbnRpYWxfa2luZCIsIlZBUkNIQVJfMjU0IGVtYWlsIFVLIiwiQk9PTEVBTiBpc19kaXNhYmxlZCIsIlRJTUVTVEFNUFRaIGNyZWF0ZWRfYXQiXSwiaWQiOiJVU0VSUyJ9LHsiYXR0cmlidXRlcyI6WyJVVUlEIGlkIFBLIiwiVkFSQ0hBUl8xNCB1c2VyX2lkIEZLIiwiQ0hBUl82NCB0b2tlbl9oYXNoIFVLIiwiVElNRVNUQU1QVFogZXhwaXJlc19hdCIsIlRJTUVTVEFNUFRaIHJldm9rZWRfYXQiLCJUSU1FU1RBTVBUWiBjcmVhdGVkX2F0IiwiVkFSQ0hBUl81MTIgdXNlcl9hZ2VudCIsIklORVQgaXBfYWRkcmVzcyIsIlVVSUQgcmVwbGFjZWRfYnlfaWQgRksiXSwiaWQiOiJSRUZSRVNIX1RPS0VOUyJ9XSwicmVsYXRpb25zaGlwcyI6W3siY2FyZGluYWxpdHkiOiJ8fC0tb3siLCJmcm9tIjoiVVNFUlMiLCJsYWJlbCI6Im93bnMiLCJ0byI6IlJFRlJFU0hfVE9LRU5TIn0seyJjYXJkaW5hbGl0eSI6Im98LS1vfCIsImZyb20iOiJSRUZSRVNIX1RPS0VOUyIsImxhYmVsIjoicmVwbGFjZWRfYnkiLCJ0byI6IlJFRlJFU0hfVE9LRU5TIn1dfSwiZGVzY3JpcHRpb24iOiJBIHVzZXIgbWF5IG93biBtdWx0aXBsZSByZWZyZXNoIHRva2Vucy4gQSByZWZyZXNoIHRva2VuIG1heSBiZSByZXBsYWNlZCBieSBvbmUgbmV3ZXIgdG9rZW4gZHVyaW5nIHJvdGF0aW9uLiIsImlkIjoidl9hdXRoXzFfMSIsImtpbmQiOiJlciIsInNvdXJjZVNoYTI1NiI6ImY3MWJlZjY4YmU0OGNjMDcyNWU1ZGVjYjkwNDU2ZWRjMTkyMTY3NTY2MThjM2Y5YjYzZTg3ODViZGM3MDk2NTgiLCJzdHlsZXMiOltdLCJ0aXRsZSI6IkF1dG9QaGFybSBBdXRoZW50aWNhdGlvbiBFUkQgdjEuMSIsInZlcnNpb24iOjF9
+```

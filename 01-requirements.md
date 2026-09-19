@@ -15,6 +15,8 @@
 | D-7 | Guest proof of purchase | **Resolved by D-3.** A guest prints a receipt at the terminal (ALWAYS for user or guest), or + optionally types an email address, or optionally creates an account afterwards to retain it. No guest leaves with nothing.                                                                                                                                      |
 | D-3 | Receipt delivery        | **Three routes: printed, emailed, stored in the account.** A thermal ESC/POS printer closes the guest gap. Signed-in users always get account storage, with email and print as options; guests get print, or email if they choose to type an address. Every sale also produces an ETA-format e-receipt, generated for real against a mock submission endpoint. |
 | D-5 | Prescription source model | **Small independent AutoDoc web portal.** AutoDoc uses the same design system but its own frontend, routes, authentication policy and clinician roles. It sends structured, signed prescription records to the central backend; it never connects directly to kiosks. Clinicians are invitation-only and bound to a simulated professional-registry record. Clinical assistants may prepare drafts but only an authorized clinician may sign or revoke. Controlled/narcotic medicines are excluded from the prototype. |
+| D-4 | Guidance engine | **Decision tree → product lookup table.** Each leaf is a defined answer. Recommendation leaves map to an explicitly ranked set of products in a mapping table; red-flag leaves provide escalation instead. No model, LLM, training process, or training data. The tree and mappings are versioned, work offline, and make each recommendation explainable in one sentence. |
+| D-6 | Insurance simulation | **One fictional insurance company with fictional members and policies.** Implement eligibility, coverage calculations, and claim reconciliation against simulated insurer responses. The initial plan uses a configurable fixed coverage percentage for eligible products, explicit exclusions, and valid/expired policies. Demonstrate approval, rejection, and timeout. Caps and deductibles are deferred. |
 
 ### 0.2 Implementation scope — graduation project
 
@@ -32,12 +34,9 @@ The ETA e-receipt is the clearest example of SIMULATE done properly: the documen
 
 §5 is retained deliberately: a graduation project that identifies the legal constraints on its own product and explains why it cannot lawfully operate as-is demonstrates more engineering maturity than one that ignores them. **Write it up, present it, do not build to it.** Where a regulatory requirement is cheap to honour anyway (audit logging, data minimisation, PIN hashing), build it — it costs nothing and strengthens the demo.
 
-### 0.3 Still blocking
+### 0.3 Decision status
 
-| #       | Decision                                     | Why it blocks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **D-4** | **Recommendation engine: LLM or rule-based** | The only remaining decision that changes the architecture. Rule-based is deterministic, auditable, works offline, and costs nothing per session. An LLM needs connectivity, adds latency, costs per call, and can produce advice you cannot predict or defend. For a graduation project an LLM demos impressively; a rule-based engine is defensible under questioning. A hybrid is viable: rule-based triage with an LLM used only to phrase the explanation. **This blocks the data model — a rule engine needs symptom, rule, and mapping tables that an LLM approach does not.** |
-| D-6     | Insurance data model                         | No real insurer to integrate with. Decide whether coverage rules are simple (flat percentage per policy) or realistic (per-category rules, caps, exclusions, co-pay). This changes the schema significantly.                                                                                                                                                                                                                                                                                                                                                                         |
+D-4 and D-6 are resolved above. Exact fictional insurance percentages and product exclusions are configurable demo data, not an external-integration dependency.
 
 ---
 
@@ -95,6 +94,8 @@ The ETA e-receipt is the clearest example of SIMULATE done properly: the documen
 - **FR-19** The flow shall collect symptom, duration, and severity at minimum, and shall screen for red-flag conditions.
 - **FR-20** On detecting a red flag (severe symptoms, long duration, pregnancy, paediatric age, chronic conditions, drug interactions), the app shall stop recommending and route to a pharmacist or emergency guidance.
 - **FR-21** Recommendations shall be limited to OTC items stocked in this terminal, ranked, each with a plain-language rationale.
+- **FR-21a** Guidance shall traverse a deterministic decision tree and retrieve the reached leaf's ranked products from a lookup table. Each recommendation shall have a one-sentence explanation of the outcome. No model, LLM, training, or generated recommendation is permitted.
+- **FR-21b** Questions, answer branches, leaf outcomes, product mappings, ranks, and bilingual explanations shall be versioned together and available offline. Filter results against terminal stock and safety restrictions; if no mapped product is eligible, show an explicit no-recommendation outcome. Red-flag outcomes shall not return product recommendations. Auditability shall come from versioned rules and mappings without retaining personal symptom answers beyond FR-24.
 - **FR-22** A medical disclaimer shall be displayed on every recommendation screen.
 - **FR-23** The app shall never state or imply a diagnosis.
 - **FR-24** Symptom inputs shall be treated as health data and discarded at session end. If retained for analytics, they shall be irreversibly anonymised.
@@ -137,6 +138,7 @@ The ETA e-receipt is the clearest example of SIMULATE done properly: the documen
 ### 2.8 Insurance
 
 - **FR-45** A signed-in user may have multiple insurance policies linked to their account.
+- **FR-45a** The academic implementation shall use a fictional insurer with fictional member and policy records. A configured coverage percentage applies to eligible products; excluded products receive no coverage. Expired or invalid policies shall be rejected. The simulator shall support approved, rejected, and timeout responses while preserving FR-47–FR-51. No real insurer connection is required; caps and deductibles are outside the initial simulation.
 - **FR-46** Insurance shall be applied as an optional, skippable step immediately before payment.
 - **FR-47** Applying a policy shall recalculate the total live and show an itemised breakdown: subtotal, covered amount, patient pays.
 - **FR-48** Per-item coverage differences shall be visible, including items not covered at all.
@@ -274,7 +276,7 @@ The ETA e-receipt is the clearest example of SIMULATE done properly: the documen
 - **SEC-10** Personal and health data shall be encrypted at rest centrally and shall not be persisted on the terminal.
 - **SEC-11** Prescription access shall be authorised per request against the authenticated account; a terminal shall never be able to enumerate prescriptions.
 - **SEC-12** All privileged actions — maintenance mode, restock, price change, refund — shall require authenticated identity and shall be audit-logged immutably.
-- **SEC-13** Input from every source shall be validated server-side; the recommendation engine, if LLM-based, shall be treated as an untrusted output channel and constrained to a fixed catalogue of permitted recommendations.
+- **SEC-13** Input from every source shall be validated server-side. Guidance tree and lookup-table publications shall be validated for valid branches, reachable outcomes, permitted products, and safety restrictions before distribution. Offline guidance shall use a validated versioned snapshot; client recommendations shall never bypass backend checkout or prescribing authorization.
 - **SEC-14** The system shall defend against automated abuse of the code-sending endpoints (email bombing, enumeration of registered accounts).
 - **SEC-15** Physical tamper events shall be detectable and shall raise an alert.
 
@@ -337,7 +339,7 @@ Egypt's **Personal Data Protection Law No. 151 of 2020** became fully operationa
 | Insurance adjudicator / TPA                                                                        | Outbound             | Optional                        | Skip insurance, full price                                                          |
 | AutoDoc prescription source                                                                        | Internal via central API | Optional for kiosk operation | AutoDoc unavailable: existing central prescriptions remain available; creating new prescriptions is unavailable; OTC kiosk mode continues |
 | Email service                                                                                      | Outbound             | Optional                        | Queue and retry; never block a sale                                                 |
-| Remote pharmacist                                                                                  | Bidirectional        | **Possibly blocking — see D-4** | If pharmacist authorisation is legally required, no dispense may proceed without it |
+| Remote pharmacist                                                                                  | Bidirectional        | **Possibly blocking — see REG-2 (DOCUMENT scope)** | If pharmacist authorisation is legally required, no dispense may proceed without it |
 
 ---
 
@@ -352,7 +354,7 @@ Egypt's **Personal Data Protection Law No. 151 of 2020** became fully operationa
 - **C-5** Network connectivity is assumed intermittent, not guaranteed.
 - **A-1** Doctors issue structured digital prescriptions through AutoDoc into the central backend and never interact directly with a kiosk terminal.
 - **A-2** Restocking is manual and periodic; the app does not control inventory arrival.
-- **A-3** A licensed pharmacist is reachable during defined hours. **If D-4 requires pharmacist authorisation per dispense, this assumption becomes a hard requirement with implications for operating hours and staffing.**
+- **A-3** A licensed pharmacist is reachable during defined hours. **For a future commercial deployment, any pharmacist-authorisation requirement discussed in REG-2 would affect operating hours and staffing; this is independent of the resolved D-4 guidance algorithm.**
 - **A-4** The operator holds, or can obtain, the pharmacy licence under which these machines trade.
 
 ---
