@@ -22,7 +22,14 @@ export interface PhoneInput {
 }
 
 export interface VerifyInput extends PhoneInput {
+  /** The six-digit code sent by SMS. */
   code: string
+  /**
+   * The second six-digit code sent to the address, required by `signup/verify/` only when
+   * an email was supplied at `signup/request/`. The backend will not put an unproven
+   * address on a durable identity.
+   */
+  emailCode?: string
 }
 
 export interface ResetConfirmInput extends VerifyInput {

@@ -11,6 +11,14 @@ import { GuestEscape } from './GuestEscape'
 interface CodeEntryScreenProps {
   title: string
   subtitle?: string
+  /** Defaults to the SMS wording; the email stage overrides it. */
+  heading?: string
+  /** Where the code went. Defaults to the masked phone on the pending challenge. */
+  destination?: string
+  /** "Sent by SMS to" by default; the email stage says so instead. */
+  sentToLabel?: string
+  /** "wrong number?" by default; the email stage asks about the address. */
+  wrongLabel?: string
   onBack: () => void
   onWrongNumber: () => void
   onSubmit: (code: string) => Promise<boolean>
@@ -29,6 +37,10 @@ interface CodeEntryScreenProps {
 export function CodeEntryScreen({
   title,
   subtitle,
+  heading,
+  destination,
+  sentToLabel,
+  wrongLabel,
   onBack,
   onWrongNumber,
   onSubmit,
@@ -86,18 +98,20 @@ export function CodeEntryScreen({
     >
       <div className="flex h-full gap-10 px-12 py-4">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <h1 className="text-2xl font-medium tracking-tight">{t('kiosk.auth.verify.heading')}</h1>
+          <h1 className="text-2xl font-medium tracking-tight">
+            {heading ?? t('kiosk.auth.verify.heading')}
+          </h1>
 
           <div className="flex items-center gap-3 text-lg text-text-secondary">
-            <span>{t('kiosk.auth.common.sentTo')}</span>
-            <bdi dir="ltr">{challenge?.phone.masked}</bdi>
+            <span>{sentToLabel ?? t('kiosk.auth.common.sentTo')}</span>
+            <bdi dir="ltr">{destination ?? challenge?.phone.masked}</bdi>
             <span aria-hidden="true">{'·'}</span>
             <button
               type="button"
               onClick={onWrongNumber}
               className="text-primary underline underline-offset-4"
             >
-              {t('kiosk.auth.verify.wrongNumber')}
+              {wrongLabel ?? t('kiosk.auth.verify.wrongNumber')}
             </button>
           </div>
 

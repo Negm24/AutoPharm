@@ -38,9 +38,6 @@ export function lockoutSecondsFor(failureCount: number): number {
 /** Renew the access token this far ahead of AUTH_ACCESS_TTL (180s). */
 export const ACCESS_RENEW_MARGIN_MS = 30_000
 
-/** sessions/extend/ doubles as the idle-timer extension and the token renewal. */
-export const SESSION_HEARTBEAT_MS = 60_000
-
 /** PRV-7 and the mockup: personal data clears on its own short timer. */
 export const PRIVACY_AUTO_CLEAR_MS = 90_000
 

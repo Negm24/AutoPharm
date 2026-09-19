@@ -73,7 +73,7 @@ interface AuthState {
 
   submitPin: (pin: string) => Promise<boolean>
   requestSignup: (pin: string) => Promise<boolean>
-  verifySignup: (code: string) => Promise<boolean>
+  verifySignup: (code: string, emailCode?: string) => Promise<boolean>
   requestPinReset: () => Promise<boolean>
   setResetCode: (code: string) => void
   confirmPinReset: (newPin: string) => Promise<boolean>
@@ -173,10 +173,14 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ serviceDown: true })
     }
     if (error.needsNewSession) {
-      // The kiosk session is gone. Drop to guest and let the bridge start a new one.
+      // The kiosk session is gone server-side, so identity goes with it. FR-5 forbids
+      // resuming one, so a brand new session is the correct recovery: without this the
+      // app keeps sending no X-Kiosk-Session and every later call 401s until Start Over.
       clearCredentials()
       clearRenewTimer()
       set({ mode: 'guest', customer: null, accessExpiresAt: null, serverSessionId: null })
+      const locale = document.documentElement.lang === 'ar' ? 'ar' : 'en'
+      void get().startServerSession(locale)
     }
 
     set({ error, status: 'idle' })
@@ -273,7 +277,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
       }
     },
 
-    verifySignup: async (code) => {
+    verifySignup: async (code, emailCode) => {
       const challenge = get().challenge
       if (!challenge || challenge.dead) {
         return false
@@ -285,17 +289,22 @@ export const useAuthStore = create<AuthState>((set, get) => {
             phoneNumber: challenge.phone.e164,
             phoneCountryCode: 'EG',
             code,
+            emailCode,
           }),
         )
         return true
       } catch (raw) {
         handleFailure(raw)
         const attemptsUsed = challenge.attemptsUsed + 1
+        // The server consumes the SMS code before it checks the email one, so a failure
+        // that reached the email step has already spent both. Nothing can be retyped;
+        // only a fresh pair of codes can move the flow on.
+        const spentBothCodes = emailCode !== undefined
         set({
           challenge: {
             ...challenge,
             attemptsUsed,
-            dead: attemptsUsed >= challenge.maxAttempts,
+            dead: spentBothCodes || attemptsUsed >= challenge.maxAttempts,
           },
         })
         return false

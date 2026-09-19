@@ -1,23 +1,23 @@
 import type { AuthGateway } from './AuthGateway'
 import { createHttpGateway } from './httpGateway'
-import { createMockGateway } from './mockGateway'
 
 let instance: AuthGateway | null = null
 
 /**
- * `VITE_AUTH_GATEWAY=http` points the same screens at the real backend. The default is
- * the mock, because the HTTP path additionally needs Postgres, Redis and a provisioned
- * Terminal row before a single request can succeed.
+ * The kiosk always talks to the real Django API at `/api/v1/auth/kiosk/*`.
+ *
+ * There is deliberately no runtime switch and no in-browser substitute: `mockGateway` is
+ * imported only by its own Vitest file, so Vite never includes it in a dev or production
+ * build and there is no code path that could reach it by accident.
  */
 export function gateway(): AuthGateway {
   if (!instance) {
-    instance =
-      import.meta.env.VITE_AUTH_GATEWAY === 'http' ? createHttpGateway() : createMockGateway()
+    instance = createHttpGateway()
   }
   return instance
 }
 
-/** Test seam: inject a gateway, or pass null to fall back to the env-selected one. */
+/** Test seam: inject a gateway, or pass null to fall back to the real one. */
 export function setGateway(next: AuthGateway | null): void {
   instance = next
 }

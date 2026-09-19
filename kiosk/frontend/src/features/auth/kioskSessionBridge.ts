@@ -1,6 +1,5 @@
 import { useSessionStore } from '../session/sessionStore'
 import { useAuthStore } from './authStore'
-import { SESSION_HEARTBEAT_MS } from './constants'
 
 /**
  * Keeps the backend's kiosk session in step with Feature 1's on-screen session, without
@@ -12,28 +11,18 @@ import { SESSION_HEARTBEAT_MS } from './constants'
  * other, and satisfies FR-4 ("destroy all session state") and FR-5 ("never resumable")
  * on the server as well as in the browser.
  *
+ * There is deliberately no periodic heartbeat. The backend README is explicit that
+ * "ordinary background polling must not automatically extend a visitor's session", so a
+ * guest's idle window is allowed to lapse on the server exactly as designed. A signed-in
+ * customer's short access token is renewed instead by the timer `authStore` schedules
+ * against its own expiry, which is the renewal the README does sanction, and a session
+ * that has already lapsed is replaced automatically when the next call reports it.
+ *
  * Imported for its side effect by `features/auth/routes.tsx`, so it is installed before
  * any auth screen can render.
  */
 
 let installed = false
-let heartbeat: ReturnType<typeof setInterval> | null = null
-
-function stopHeartbeat() {
-  if (heartbeat !== null) {
-    clearInterval(heartbeat)
-    heartbeat = null
-  }
-}
-
-function startHeartbeat() {
-  stopHeartbeat()
-  // sessions/extend/ is both the idle-timer extension (FR-3) and, while signed in, the
-  // only way to renew the 180-second access token. The kiosk has no refresh token.
-  heartbeat = setInterval(() => {
-    void useAuthStore.getState().extendServerSession()
-  }, SESSION_HEARTBEAT_MS)
-}
 
 export function installKioskSessionBridge(): void {
   if (installed) {
@@ -41,11 +30,9 @@ export function installKioskSessionBridge(): void {
   }
   installed = true
 
-  const auth = useAuthStore.getState()
   const current = useSessionStore.getState().session
   if (current) {
-    void auth.startServerSession(current.lang)
-    startHeartbeat()
+    void useAuthStore.getState().startServerSession(current.lang)
   }
 
   useSessionStore.subscribe((state, previous) => {
@@ -54,7 +41,6 @@ export function installKioskSessionBridge(): void {
 
     if (before && !after) {
       // Expiry or Start over. Identity and every challenge go with it (FR-4, FR-35).
-      stopHeartbeat()
       void useAuthStore.getState().endServerSession()
       return
     }
@@ -63,7 +49,6 @@ export function installKioskSessionBridge(): void {
       // A fresh session means a fresh person at the terminal.
       useAuthStore.getState().hardReset()
       void useAuthStore.getState().startServerSession(after.lang)
-      startHeartbeat()
     }
   })
 

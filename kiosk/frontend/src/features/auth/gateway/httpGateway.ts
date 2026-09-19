@@ -134,7 +134,13 @@ export function createHttpGateway(): AuthGateway {
     async verifySignup(input: VerifyInput) {
       return toAuthSuccess(
         await request<AccessPayload>(`${BASE}/signup/verify/`, {
-          body: { ...phoneBody(input), code: input.code },
+          body: {
+            ...phoneBody(input),
+            code: input.code,
+            // Omitted entirely when no email was given: the serializer treats the field as
+            // optional, and sending null would fail its six-digit regex.
+            ...(input.emailCode ? { email_code: input.emailCode } : {}),
+          },
           auth: false,
         }),
       )

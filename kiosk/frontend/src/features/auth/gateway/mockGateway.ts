@@ -51,6 +51,8 @@ interface MockAccount {
 interface MockChallenge {
   kind: ChallengeKind
   code: string
+  /** Set only when the signup supplied an email, mirroring the backend's second code. */
+  emailCode: string | null
   expiresAt: number
   attempts: number
   profile: SignupInput | null
@@ -150,18 +152,25 @@ function issueCode(kind: ChallengeKind, phone: string, profile: SignupInput | nu
   }
 
   const code = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
+  // An optional signup email gets its own code: the backend will not attach an unproven
+  // address to a durable identity.
+  const email = profile?.email || ''
+  const emailCode = email ? String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0') : null
+
   // A newer code supersedes the previous challenge for this phone, on any terminal.
   challenges.set(phone, {
     kind,
     code,
+    emailCode,
     expiresAt: Date.now() + OTP_TTL_MS,
     attempts: 0,
     profile,
   })
   lastCodeSentAt.set(phone, Date.now())
 
-  if (import.meta.env.DEV) {
-    mockOtpChannel.publish(phone, code)
+  mockOtpChannel.publish(phone, code)
+  if (emailCode) {
+    mockOtpChannel.publish(email, emailCode)
   }
 }
 
@@ -281,10 +290,20 @@ export function createMockGateway(): AuthGateway {
     async verifySignup(input: VerifyInput) {
       await delay()
       requireSession()
+      // Consumes the SMS code first, exactly as the backend does, so a later email
+      // failure leaves both codes spent.
       const challenge = takeChallenge('signup', input.phoneNumber, input.code)
       const profile = challenge.profile
       if (!profile) {
         fail('invalid_code', 'The code is invalid or expired.', 400)
+      }
+      if (challenge.emailCode) {
+        if (!input.emailCode) {
+          fail('email_verification_required', 'Enter the email verification code.', 400)
+        }
+        if (input.emailCode !== challenge.emailCode) {
+          fail('invalid_code', 'The code is invalid or expired.', 400)
+        }
       }
       if (accounts.has(input.phoneNumber)) {
         fail('unable_to_register', 'Unable to register; try signing in.', 400)

@@ -178,19 +178,39 @@ endpoint, and "Continue as guest" appears on every auth screen including lockout
 
 ### Talking to the backend
 
-`src/features/auth/gateway/` holds one `AuthGateway` interface with two implementations:
+The kiosk always calls the real Django API at `/api/v1/auth/kiosk/*`. There is no in-browser
+substitute and no runtime switch: `mockGateway.ts` is imported only by its own Vitest file,
+so it is absent from every dev and production build.
 
-- `httpGateway` — the real `/api/v1/auth/kiosk/*` endpoints
-- `mockGateway` — an in-memory replica of the same rules, used by default
+**The backend must be running before any auth screen works.** Otherwise every one of them
+shows "Sign-in unavailable", which is the designed degradation — guest shopping still works.
 
-`VITE_AUTH_GATEWAY=http` switches over. The HTTP path additionally needs Postgres, Redis, the
-migrations applied, and a provisioned terminal:
-
-```python
-Terminal.objects.create(name="Kiosk 04", key_hash=hashlib.sha256(b"<raw key>").hexdigest())
+```powershell
+docker compose up -d db redis
+cd backend
+uv run python manage.py migrate
+uv run python manage.py runserver
+uv run python manage.py provision_terminal --name "Demo Kiosk"   # prints the secret ONCE
 ```
 
-with the same raw key in `KIOSK_TERMINAL_KEY`.
+Put that secret in `kiosk/frontend/.env.local` as `KIOSK_TERMINAL_KEY`. Every kiosk call
+needs an `X-Terminal-Key` header, and the backend forbids that credential being in browser
+JavaScript, so the dev proxy attaches it (nginx does the same in production).
+
+Local SMS and email are simulations. To read a verification code, as an operator would:
+
+```powershell
+uv run python manage.py show_demo_message --phone +201012345678
+uv run python manage.py show_demo_message --email you@example.test
+```
+
+That command **consumes** the message — a second run reports none and you must resend.
+Codes live 180 seconds. Rate limits are real: one SMS per 30s per number, ten OTP requests
+per 300s per number, three signup emails per 600s per address.
+
+Supplying an email at signup is optional, but when given the backend issues a **second**
+code to it and `signup/verify/` requires both; the verification screen asks for them in
+sequence.
 
 ---
 

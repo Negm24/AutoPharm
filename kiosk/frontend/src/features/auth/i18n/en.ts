@@ -16,6 +16,7 @@ const authEn = {
         'By continuing you accept the pharmacy\u2019s terms and privacy notice. Data stays with Al Waha and is never shown to the next customer.',
       privacyNotice: 'Read the privacy notice',
       sentTo: 'Sent by SMS to',
+      sentToEmail: 'Sent by email to',
       step: 'Step {{current}} of {{total}}',
     },
     gate: {
@@ -74,9 +75,12 @@ const authEn = {
         'Collect prescriptions here, keep insurance on file, and reprint receipts at any Al Waha kiosk.',
     },
     verify: {
+      emailHeading: 'Enter the code sent to your email',
+      twoCodes: 'Two codes keep your email yours: one by SMS, then one by email.',
       screenTitle: 'Verification code',
       heading: 'Enter the 6-digit code',
       wrongNumber: 'wrong number?',
+      wrongEmail: 'wrong address?',
       mismatch: 'That code didn\u2019t match.',
       expired: 'That code has expired. Ask for a new one.',
       dead: 'Too many attempts on that code. Ask for a new one.',
@@ -140,6 +144,9 @@ const authEn = {
       signInNeeded: 'Sign in needed',
     },
     errors: {
+      email_verification_required: 'Enter the code we emailed you as well.',
+      email_unavailable: 'We could not send the email code. Try again, or sign up without an email.',
+      account_exists: 'That account already exists. Try signing in instead.',
       invalid_credentials: 'That number and PIN don\u2019t match. Please try again.',
       invalid_code: 'That code is wrong or has expired.',
       invalid_token: 'Your sign-in expired. Please sign in again.',

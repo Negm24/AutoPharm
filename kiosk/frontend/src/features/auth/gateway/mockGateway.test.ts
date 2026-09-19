@@ -126,6 +126,79 @@ describe('mock gateway reproduces the backend rules', () => {
     stop()
   })
 
+  describe('optional signup email needs its own code', () => {
+    const phone = '+201115551111'
+    const email = 'nadia@example.invalid'
+
+    async function requestWithEmail() {
+      const codes = new Map<string, string>()
+      const stop = mockOtpChannel.subscribe((target, code) => codes.set(target, code))
+      await auth.requestSignup({
+        firstName: 'Nadia',
+        lastName: 'Hassan',
+        dateOfBirth: '1992-02-02',
+        email,
+        phoneNumber: phone,
+        phoneCountryCode: 'EG',
+        pin: '5826',
+      })
+      stop()
+      return codes
+    }
+
+    it('refuses the SMS code alone', async () => {
+      const codes = await requestWithEmail()
+      const error = await expectApiError(
+        auth.verifySignup({
+          phoneNumber: phone,
+          phoneCountryCode: 'EG',
+          code: codes.get(phone) as string,
+        }),
+        'email_verification_required',
+      )
+      expect(error.status).toBe(400)
+    })
+
+    it('creates the account when both codes are supplied', async () => {
+      const codes = await requestWithEmail()
+      await expect(
+        auth.verifySignup({
+          phoneNumber: phone,
+          phoneCountryCode: 'EG',
+          code: codes.get(phone) as string,
+          emailCode: codes.get(email) as string,
+        }),
+      ).resolves.toMatchObject({ userId: 'USR-0000000002' })
+    })
+
+    it('spends the SMS code even when the email code is wrong', async () => {
+      const codes = await requestWithEmail()
+      const sms = codes.get(phone) as string
+
+      await expectApiError(
+        auth.verifySignup({
+          phoneNumber: phone,
+          phoneCountryCode: 'EG',
+          code: sms,
+          emailCode: '000000',
+        }),
+        'invalid_code',
+      )
+
+      // The correct pair no longer works: the backend consumes the SMS code first, so
+      // both are gone and only a fresh request can continue.
+      await expectApiError(
+        auth.verifySignup({
+          phoneNumber: phone,
+          phoneCountryCode: 'EG',
+          code: sms,
+          emailCode: codes.get(email) as string,
+        }),
+        'invalid_code',
+      )
+    })
+  })
+
   it('burns an attempt on a malformed code and destroys the challenge on the fifth', async () => {
     await auth.requestPinReset({ phoneNumber: SEEDED_PHONE, phoneCountryCode: 'EG' })
 
