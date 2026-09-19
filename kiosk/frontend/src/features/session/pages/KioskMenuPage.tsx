@@ -1,9 +1,14 @@
 import { useTranslation } from 'react-i18next'
-import { useSessionStore } from '../stores/sessionStore'
+import { useNavigate } from 'react-router-dom'
+import { useSessionStore } from '../sessionStore'
+import { useAuthStore } from '../../auth/authStore'
 
 export default function KioskMenuPage() {
   const { t, i18n } = useTranslation()
+  const navigate = useNavigate()
   const currentRemaining = useSessionStore((state) => state.currentRemaining)
+  const authMode = useAuthStore((state) => state.mode)
+  const customer = useAuthStore((state) => state.customer)
 
   const totalSeconds = Math.max(0, Math.floor(currentRemaining / 1000))
   const mm = String(Math.floor(totalSeconds / 60)).padStart(2, '0')
@@ -40,6 +45,19 @@ export default function KioskMenuPage() {
             <span>⌕</span>
             <span>{t('kiosk.search')}</span>
           </button>
+          {/* Feature 4 entry point. FR-29: sign-in is offered, never demanded. */}
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-white/90"
+            onClick={() => navigate(authMode === 'authenticated' ? '/kiosk/account' : '/kiosk/auth/phone')}
+          >
+            <span>◉</span>
+            <span>
+              {authMode === 'authenticated'
+                ? (customer?.firstName ?? t('kiosk.auth.status.signedIn'))
+                : t('kiosk.auth.common.signIn')}
+            </span>
+          </button>
           <button
             type="button"
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-white/90"
@@ -59,6 +77,10 @@ export default function KioskMenuPage() {
         <div className="flex h-full flex-col justify-center items-center gap-4 px-4">
           <h1 className="text-2xl font-medium">{t('kiosk.menu.welcome')}</h1>
           <p className="text-base text-text-secondary">{t('kiosk.menu.subtitle')}</p>
+          {/* The design keeps the guest route visible rather than nagging for an account. */}
+          {authMode === 'authenticated' ? null : (
+            <p className="text-sm text-text-muted">{t('kiosk.auth.status.guest')}</p>
+          )}
           <div className="flex flex-col gap-3 w-72">
             <button type="button" className="rounded-lg border border-border bg-white px-4 py-3 text-left text-text-primary transition hover:bg-white/90">
               <div className="font-medium">{t('kiosk.menu.demoBtn1')}</div>

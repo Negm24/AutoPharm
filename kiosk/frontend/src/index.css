@@ -19,6 +19,14 @@
   --color-text-dim: #c5c8db;
   --color-border: #cfd3e5;
   --color-border-strong: #2e3146;
+  --color-danger-border: #a63232;
+  --color-danger-soft: #fdecea;
+  --color-success-soft: #e6f4ed;
+  --color-warning-soft: #fdf3e2;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #e4e7f5;
+  --color-key: #ffffff;
+  --color-key-dim: #dfe3f2;
 }
 
 html,

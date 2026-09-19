@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '../sessionStore'
 
 export function SessionTimer() {
   const startSession = useSessionStore((state) => state.startSession)
