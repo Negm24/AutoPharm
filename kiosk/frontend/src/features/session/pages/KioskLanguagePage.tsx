@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '../sessionStore'
 
 export default function KioskLanguagePage() {
   const { t, i18n } = useTranslation()
