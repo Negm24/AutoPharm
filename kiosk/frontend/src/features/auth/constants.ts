@@ -44,6 +44,17 @@ export const SESSION_HEARTBEAT_MS = 60_000
 /** PRV-7 and the mockup: personal data clears on its own short timer. */
 export const PRIVACY_AUTO_CLEAR_MS = 90_000
 
+/**
+ * Phone entry accepts every form normalizeEgyptianPhone understands, so the field must be
+ * wide enough to hold the longest of them (0020 + 10 digits). Capping at the 11-digit
+ * national length truncated a country-code prefix into nonsense before the validator ever
+ * saw it.
+ */
+export const MAX_TYPED_PHONE_DIGITS = 14
+
+/** Below this there is nothing useful to say yet, so errors stay quiet while typing. */
+export const MIN_JUDGEABLE_PHONE_DIGITS = 10
+
 /** FR-30a. The kiosk is deployed in Egypt; the backend requires a mobile number. */
 export const DEFAULT_COUNTRY = 'EG'
 export const DEFAULT_DIAL_CODE = '+20'

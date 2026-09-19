@@ -4,12 +4,15 @@ import { useNavigate } from 'react-router-dom'
 import { digitsOnly } from '../../../shared/format/digits'
 import { KeyboardSheet, KioskScreen, TextField } from '../../../shared/ui'
 import { useAuthStore } from '../authStore'
-import { DEFAULT_DIAL_CODE, QR_ENABLED } from '../constants'
+import {
+  DEFAULT_DIAL_CODE,
+  MAX_TYPED_PHONE_DIGITS,
+  MIN_JUDGEABLE_PHONE_DIGITS,
+  QR_ENABLED,
+} from '../constants'
 import { AuthNotice } from '../components/AuthNotice'
 import { GuestEscape } from '../components/GuestEscape'
 import { formatNationalPhone, normalizeEgyptianPhone, type PhoneIssue } from '../validation'
-
-const NATIONAL_LENGTH = 11
 
 const ISSUE_KEYS: Record<PhoneIssue, string> = {
   empty: 'kiosk.auth.errors.phoneEmpty',
@@ -30,18 +33,25 @@ export default function PhoneEntryPage() {
   const [national, setNational] = useState('')
   const [issue, setIssue] = useState<PhoneIssue | null>(null)
 
+  // One source of truth for "is this number usable": the same validator that mirrors the
+  // backend. Gating the key on a raw digit count instead used to strand anyone who typed
+  // their number without the leading zero, which the validator accepts.
+  const parsed = normalizeEgyptianPhone(national)
+
   const submit = () => {
-    const result = normalizeEgyptianPhone(national)
-    if (!result.ok) {
-      setIssue(result.issue)
+    if (!parsed.ok) {
+      setIssue(parsed.issue)
       return
     }
     setIssue(null)
-    setPhone(result.e164)
+    setPhone(parsed.e164)
     navigate('/kiosk/auth/pin')
   }
 
-  const complete = national.length === NATIONAL_LENGTH
+  // FR-72: a disabled key must never be a dead end, so once there is enough to judge, the
+  // reason it is disabled is on screen.
+  const liveIssue =
+    issue ?? (!parsed.ok && national.length >= MIN_JUDGEABLE_PHONE_DIGITS ? parsed.issue : null)
 
   return (
     <KioskScreen
@@ -50,10 +60,10 @@ export default function PhoneEntryPage() {
       keyboard={
         <KeyboardSheet
           layout="num"
-          doneDisabled={!complete}
+          doneDisabled={!parsed.ok}
           onKey={(value) => {
             setIssue(null)
-            setNational((current) => digitsOnly(current + value, NATIONAL_LENGTH))
+            setNational((current) => digitsOnly(current + value, MAX_TYPED_PHONE_DIGITS))
           }}
           onBackspace={() => {
             setIssue(null)
@@ -76,7 +86,7 @@ export default function PhoneEntryPage() {
             // The number itself is always read left to right, even in Arabic.
             dir="ltr"
             prefix={DEFAULT_DIAL_CODE}
-            error={issue ? t(ISSUE_KEYS[issue]) : null}
+            error={liveIssue ? t(ISSUE_KEYS[liveIssue]) : null}
             hint={t('kiosk.auth.phone.subtitle')}
             onFocus={() => undefined}
           />

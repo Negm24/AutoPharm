@@ -59,6 +59,18 @@ describe('normalizeEgyptianPhone mirrors FR-30a', () => {
     expect(normalizeEgyptianPhone(input).ok).toBe(true)
   })
 
+  // Regression: the confirm key used to be gated on a raw 11-digit count while the
+  // validator happily accepted these, so a number typed without the leading zero could
+  // never enable the key, and a country-code prefix was truncated into nonsense.
+  it.each([
+    ['1012345678', 'no leading zero'],
+    ['201012345678', 'country code, no plus'],
+    ['00201012345678', 'international prefix'],
+    ['+20 101 234 5678', 'spaced international'],
+  ])('accepts %s (%s) and canonicalises it', (input) => {
+    expect(normalizeEgyptianPhone(input)).toMatchObject({ ok: true, e164: '+201012345678' })
+  })
+
   it('rejects a non-mobile prefix', () => {
     expect(normalizeEgyptianPhone('01312345678')).toMatchObject({ ok: false, issue: 'prefix' })
   })
