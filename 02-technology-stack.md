@@ -1,22 +1,23 @@
-# Smart Pharmacy Kiosk — Technology Stack and Architecture
+# H.A.V.E — Technology Stack and Architecture
 
-**Version:** 1.2
+**Version:** 1.3
 
 **Status:** Confirmed
 
-**Date:** 29 August 2026
+**Date:** 22 September 2026
 **Related specification:** `01-requirements.md`
 
 ---
 
 ## 1. Decision summary
 
-AutoPharm will use a **modular monolith** architecture with two independent React applications, one authoritative Django backend, PostgreSQL, and a small local Python service for kiosk hardware.
+AutoPharm will use a **modular monolith** architecture with three independent React applications—**H.A.V.E Terminal**, **H.A.V.E Advisor**, and **H.A.V.E Hub**—one authoritative Django backend, PostgreSQL, and a small local Python service for kiosk hardware. H.A.V.E means **Health Access & Vending Everywhere**; AutoPharm remains the repository/backend project name.
 
 | Area | Confirmed choice |
 |---|---|
-| Kiosk frontend | React + Vite |
-| Doctor portal | React + Vite |
+| H.A.V.E Terminal (kiosk) | React + Vite |
+| H.A.V.E Advisor (doctor) | React + Vite |
+| H.A.V.E Hub (customer) | React + Vite |
 | Frontend language | TypeScript only for application and shared-package source code |
 | Styling | Tailwind CSS plus a shared AutoPharm design system |
 | Backend | Python + Django + Django REST Framework |
@@ -31,7 +32,7 @@ AutoPharm will use a **modular monolith** architecture with two independent Reac
 
 The principal architectural rules are:
 
-> Django is the only authoritative application backend. The kiosk and AutoDoc never access PostgreSQL or Supabase directly.
+> Django is the only authoritative application backend. Terminal, Advisor, and Hub never access PostgreSQL or Supabase directly, nor call one another directly.
 
 > SOLID is applied where it protects business rules, integrations, or testability. Simple code remains simple; abstractions are not created merely to satisfy a pattern.
 
@@ -40,39 +41,19 @@ The principal architectural rules are:
 ## 2. High-level architecture
 
 ```text
-┌──────────────────────┐       ┌──────────────────────┐
-│ AutoPharm Kiosk      │       │ AutoDoc             │
-│ React + Vite         │       │ React + Vite         │
-│ 1024×600 touchscreen │       │ Doctor web portal    │
-└──────────┬───────────┘       └──────────┬───────────┘
-           │ HTTPS / REST API             │ HTTPS / REST API
-           └──────────────┬───────────────┘
-                          ▼
-               ┌─────────────────────┐
-               │ Django Backend      │
-               │ Django REST         │
-               │ Business rules      │
-               │ Authentication      │
-               │ Authorization       │
-               │ Transactions        │
-               │ Audit logging       │
-               └──────┬────────┬─────┘
-                      │        │
-                      │        └──────────────┐
-                      ▼                       ▼
-            ┌─────────────────┐     ┌──────────────────┐
-            │ PostgreSQL      │     │ Celery Workers   │
-            │ Supabase host   │     │ Redis broker     │
-            └─────────────────┘     └──────────────────┘
+Customer ──► H.A.V.E Hub ────────┐
+Customer ──► H.A.V.E Terminal ───┼── HTTPS / REST ──► Django backend
+Doctor ────► H.A.V.E Advisor ────┘                     │
+                                                       ├──► PostgreSQL
+                                                       └──► Celery / Redis
 
-┌──────────────────────┐
-│ Python Device Agent  │◄──── localhost ──── AutoPharm Kiosk
-│ Printer / dispenser  │
-│ scanner / sensors    │
-└──────────────────────┘
+H.A.V.E Terminal ── localhost ──► Python device agent ──► kiosk hardware
+H.A.V.E Terminal ────────────────► Django backend ───────► digital payment mock
+
+Django backend ──► SMS / email, payment, insurance, ETA / EPTTS adapters
 ```
 
-The two frontends share design assets and API contracts but remain independently buildable and deployable.
+The three frontends share design assets and API contracts but remain independently buildable and deployable. See the [editable Lucidchart whole-system diagram](https://lucid.app/lucidchart/0cca437e-1e75-4443-9298-a92ffcc4bd01/edit). H.A.V.E Operation is a deferred idea, not a fourth application in this architecture.
 
 The central backend is authoritative for accounts, prescriptions, prices, orders, and fleet-wide records. Each physical kiosk also owns a small, durable local operational journal through the device agent so an interrupted OTC cash dispense can be reconciled after a crash or network outage. This local journal contains operational identifiers and outcomes, not prescription or patient data.
 
@@ -80,7 +61,7 @@ The central backend is authoritative for accounts, prescriptions, prices, orders
 
 ## 3. Frontend applications
 
-### 3.1 AutoPharm Kiosk
+### 3.1 H.A.V.E Terminal
 
 The kiosk is a React single-page application built with Vite. It is designed specifically for the fixed 1024×600 touchscreen described in the requirements.
 
@@ -97,9 +78,9 @@ Its responsibilities include:
 
 The kiosk frontend is not trusted to make authorization, pricing, prescribing, payment, or dispensing-integrity decisions. Those decisions are enforced by the backend or the appropriate external/local service.
 
-### 3.2 AutoDoc
+### 3.2 H.A.V.E Advisor
 
-AutoDoc is an independent React + Vite web application for prescribing clinicians and authorized clinical staff.
+Advisor is an independent React + Vite web application for doctors only.
 
 It shares AutoPharm's visual identity, but it has:
 
@@ -111,27 +92,32 @@ It shares AutoPharm's visual identity, but it has:
 
 Its initial scope is deliberately narrow:
 
-- Clinician authentication and MFA.
-- Patient lookup.
-- Prescription drafting.
-- Final review and signing.
+- Doctor signup, owner-code approval, login, and MFA.
+- Patient identity and phone-number entry, without requiring an existing customer account.
+- Structured prescription issue as one doctor action.
 - Prescription revocation.
 - Current and previous prescription status.
-- Audit-history viewing where authorized.
+- A waiting-for-approval screen until the doctor enters the owner-shared code.
 
-AutoDoc connects to the kiosk only through the central backend. It does not communicate directly with kiosk terminals. A prescription issued through AutoDoc is stored centrally and later retrieved by the authenticated patient at any kiosk.
+Advisor connects to Terminal and Hub only through the central backend. An issued prescription addressed to a phone number may remain unclaimed until the customer registers or signs in, proves control of the number, passes patient-detail matching, and explicitly claims it.
 
-AutoDoc submits a structured prescription—not a PDF or image upload—as the authoritative clinical record. The payload contains the patient identifier, prescriber, issue and expiry timestamps, medicine identifiers, dosage instructions, quantities, refill rules, and signature metadata. A rendered PDF may be generated as a human-readable representation, but it is never the source of truth.
+Advisor submits a structured prescription—not a PDF or image upload—as the authoritative clinical record. The payload contains the intended patient's identifying details and canonical phone number, doctor, clinic, issue and expiry timestamps, medicine identifiers, dosage instructions, quantities, refill rules, and signature metadata. The customer-account link is established only after a safe claim. A rendered PDF may be generated for reading, but it is never the source of truth.
 
-The clinician must select a uniquely matched patient record and confirm identity details before signing. The system must not attach a prescription to an account solely because a mobile number was typed.
+No clinical assistant, delegated draft, invitation flow, or admin page is part of Advisor. The owner reviews doctor signup information through a fixed email address and shares the single-use activation code directly with an approved doctor. The code is never exposed to the applicant by the app; the password is never included in the approval email. Activation and prescribing authorization are enforced by Django.
 
-### 3.3 Why React + Vite
+### 3.3 H.A.V.E Hub
 
-React is preferred over Vanilla JavaScript because both applications contain complex state, reusable components, validation, error handling, and asynchronous workflows.
+Hub is the customer-facing React + Vite application for use away from a kiosk. It uses the same central customer account as Terminal, with its own non-kiosk session policy. It provides at-home signup and phone verification, prescription claim and viewing, order and receipt history, nearby Terminal discovery, and per-Terminal catalogue/stock browsing. Stock shown remotely is timestamped and advisory until a backend reservation is confirmed.
+
+Hub will let customers save payment methods through a provider-hosted capture flow. Only provider tokens and display-safe metadata reach Django; no card number or security code reaches Hub, Django, or PostgreSQL. In the academic implementation the provider flow is simulated without real card credentials. A saved method still requires a customer-approved, amount-specific checkout and any provider-required verification.
+
+### 3.4 Why React + Vite
+
+React is preferred over Vanilla JavaScript because the three applications contain complex state, reusable components, validation, error handling, and asynchronous workflows.
 
 Vite is preferred over Next.js because:
 
-- Neither application requires search-engine optimization.
+- These applications do not require search-engine optimization for the initial scope.
 - Server-side rendering is not required.
 - Django is the authoritative backend.
 - The frontends should remain simple static builds.
@@ -143,7 +129,7 @@ Next.js would introduce a second server-side application layer and blur the back
 
 ## 4. TypeScript decision
 
-TypeScript is the confirmed source language for both React applications and all shared frontend packages. New application source files shall use `.ts` or `.tsx`, not `.js` or `.jsx`.
+TypeScript is the confirmed source language for all three React applications and all shared frontend packages. New application source files shall use `.ts` or `.tsx`, not `.js` or `.jsx`.
 
 The team is more familiar with JavaScript, so the project will avoid advanced generics, type-level programming, and unnecessary abstractions. TypeScript should look like ordinary JavaScript with explicit application contracts. This limits the learning cost without weakening type safety.
 
@@ -250,7 +236,7 @@ Components shall use semantic variables rather than scattered literal colors:
 --touch-target-min;
 ```
 
-The kiosk and AutoDoc share:
+Terminal, Advisor, and Hub share:
 
 - Color palette.
 - Typography.
@@ -261,7 +247,7 @@ The kiosk and AutoDoc share:
 - Dialog and alert patterns.
 - Error, loading, and empty states.
 
-They do not need to share identical page layouts. AutoDoc can use denser desktop layouts, while the kiosk must retain large touch targets and fixed-screen behavior.
+They do not need identical layouts: Advisor can use denser desktop forms, Hub adapts to customer devices, and Terminal keeps large touch targets and fixed-screen behavior.
 
 All shared components must support Arabic, English, RTL mirroring, keyboard access where relevant, and WCAG 2.1 AA contrast.
 
@@ -283,7 +269,7 @@ Django is preferred over Flask because AutoPharm requires substantial built-in a
 
 - User authentication.
 - Roles and permissions.
-- Admin interfaces.
+- Server-side authentication and authorization foundations.
 - Database migrations.
 - Transaction management.
 - Model validation.
@@ -304,9 +290,8 @@ backend/
   config/
   apps/
     identity/
-    organizations/
-    patients/
-    clinicians/
+    accounts/
+    doctor_approval/
     prescriptions/
     catalogue/
     inventory/
@@ -320,6 +305,8 @@ backend/
     audit/
     integrations/
 ```
+
+This is a possible domain decomposition, not a commitment to one Django app or table per line. There is no platform admin page, clinical-assistant subsystem, or technician-maintenance app in the software scope. Doctor applications are approved by an owner-controlled code delivered to a configured email address; hardware collaborators own maintenance mode.
 
 Microservices are explicitly rejected for the graduation-project scope. They would add deployment, distributed authentication, network failure, logging, and transaction complexity without providing a useful benefit to a five-person team.
 
@@ -504,14 +491,13 @@ Illegal transitions must be rejected by the domain layer:
 
 ```python
 class Prescription:
-    def sign(self, signer: VerifiedPrescriber, signature: Signature) -> None:
-        if self.status is not PrescriptionStatus.READY_FOR_REVIEW:
+    def revoke(self, doctor: AuthorizedDoctor, reason: str) -> None:
+        if self.status is not PrescriptionStatus.ISSUED:
             raise InvalidPrescriptionTransition(...)
-        self.status = PrescriptionStatus.ISSUED
-
-    def revoke(self, actor: VerifiedPrescriber, reason: str) -> None:
-        ...
+        self.status = PrescriptionStatus.REVOKED
 ```
+
+Issuance is a single authorized doctor action; there is no delegated ready-for-review/draft state. The issue service validates the patient details and prescription lines, records signature metadata, and persists the issued prescription as unclaimed when no customer account is safely linked.
 
 The application service decides the transaction boundary; Django ORM transactions and locking implement that boundary around the domain operation.
 
@@ -560,12 +546,11 @@ Frontend rules:
 Example:
 
 ```text
-PrescriptionReviewPage
-  ├── usePrescriptionQuery
-  ├── useSignPrescriptionMutation
-  ├── PrescriptionSummary
+IssuePrescriptionPage
+  ├── useIssuePrescriptionMutation
+  ├── PatientDetailsForm
   ├── PrescriptionLineList
-  └── ConfirmSignatureDialog
+  └── ConfirmIssueDialog
 ```
 
 This preserves single responsibility and dependency inversion without introducing unnecessary class hierarchies.
@@ -594,16 +579,23 @@ The backend exposes a versioned REST API:
 /api/v1/
 ```
 
-Example resources and actions:
+Illustrative resources and actions (exact paths will be settled with the OpenAPI contract):
 
 ```text
-POST /api/v1/auth/patient/login
-POST /api/v1/autodoc/auth/login
+POST /api/v1/customers/signup
+POST /api/v1/customers/login
+POST /api/v1/doctors/signup
+POST /api/v1/doctors/activate
+POST /api/v1/doctors/login
 
-GET  /api/v1/patients/{id}/prescriptions
-POST /api/v1/prescriptions
-POST /api/v1/prescriptions/{id}/sign
-POST /api/v1/prescriptions/{id}/revoke
+GET  /api/v1/prescriptions/mine
+POST /api/v1/prescriptions/claims
+POST /api/v1/doctors/prescriptions
+POST /api/v1/doctors/prescriptions/{id}/revoke
+
+GET  /api/v1/terminals
+GET  /api/v1/terminals/{id}/catalogue
+POST /api/v1/payment-methods
 
 POST /api/v1/orders
 POST /api/v1/orders/{id}/reserve
@@ -616,7 +608,7 @@ The OpenAPI specification is the source for API documentation and, where practic
 
 ### 7.10 Transaction boundaries and external workflows
 
-Database transactions cannot make a card terminal, dispenser, insurer, email provider, and PostgreSQL commit atomically together. The architecture must not describe those multi-system operations as one database transaction.
+Database transactions cannot make the digital payment mock, dispenser, insurer, email provider, and PostgreSQL commit atomically together. The architecture must not describe those multi-system operations as one database transaction.
 
 Use two different consistency mechanisms:
 
@@ -670,7 +662,7 @@ prescriptions/
   tests/
 ```
 
-A simple reference-data module may remain only `models.py`, `admin.py`, `api/`, and `tests/`. The project does not require empty domain, repository, factory, or adapter files in every Django application.
+A simple reference-data module may remain only `models.py`, `api/`, and `tests/`. The project does not require empty domain, repository, factory, or adapter files in every Django application. No Django Admin UI is required for the platform scope.
 
 ---
 
@@ -717,7 +709,7 @@ The initial architecture does not use:
 - Direct frontend database access.
 - Supabase Auth.
 - Supabase Edge Functions.
-- Supabase's Data API from the kiosk or AutoDoc.
+- Supabase's Data API from Terminal, Advisor, or Hub.
 - Supabase Row Level Security as a duplicate application-authorization system.
 
 If the hosted project exposes Supabase Data API features by default, public/anonymous access must be disabled or restricted to a schema containing no AutoPharm application tables. No Supabase anonymous or service-role key is shipped in either frontend.
@@ -772,7 +764,7 @@ Every critical job should carry:
 - Exponential backoff.
 - Last-error details.
 - A terminal failed/dead-letter state.
-- Administrative visibility.
+- Visibility through structured logs and internal diagnostics (no admin page).
 
 Celery is a delivery mechanism, not the source of truth. Critical work must first be represented by a durable database record.
 
@@ -830,7 +822,7 @@ The device agent must listen on loopback only, reject browser origins other than
 
 For online prescription or centrally authorized orders, Django issues a short-lived signed dispense authorization containing the terminal, order, permitted line items, quantities, expiry, and nonce. The device agent verifies it before moving hardware. The browser cannot construct or widen this authorization.
 
-For offline OTC cash mode, the agent accepts only the locally authenticated kiosk installation and enforces a signed offline policy snapshot that excludes prescription-only/controlled products and card payments. Offline capability must not become a general bypass of backend authorization.
+For offline OTC cash mode, the agent accepts only the locally authenticated kiosk installation and enforces a signed offline policy snapshot that excludes prescription-only/controlled products and digital payment. Offline capability must not become a general bypass of backend authorization.
 
 Each hardware command includes:
 
@@ -859,7 +851,7 @@ The mock path is mandatory so the complete application can still be demonstrated
 
 The device agent must follow the same SOLID rules as the backend: focused device interfaces, adapter implementations, dependency injection at startup, and no hardware-specific branches inside application workflows.
 
-The payment terminal remains a separate certified device boundary. Raw card details never pass through React, the Python device agent, Django, logs, or PostgreSQL.
+There is no physical payment terminal or card reader. Terminal checkout and Hub's saved-method setup use a simulated digital payment-provider boundary. Raw card details never pass through H.A.V.E React applications, the Python device agent, Django, logs, or PostgreSQL; only opaque provider references and display-safe metadata are stored centrally. The academic provider adapter is simulated without real cards.
 
 ---
 
@@ -867,47 +859,36 @@ The payment terminal remains a separate certified device boundary. Raw card deta
 
 The central backend owns all authentication and authorization. Different actors use different authentication policies.
 
-### 11.1 Kiosk customer
+### 11.1 Terminal customer
 
 - Mobile number and four-digit PIN.
 - SMS verification and reset code.
 - Short-lived session bound to terminal and kiosk session.
 - Server-side lockout and rate limiting.
-- No access to AutoDoc.
+- No access to Advisor doctor endpoints.
 - PIN hashes stored with Argon2id or the strongest supported Django password hasher configured for the project.
 
-### 11.2 AutoDoc clinician
+### 11.2 Hub customer
 
-- Invitation-only account.
-- Strong password.
-- TOTP MFA for the academic implementation.
-- Verified simulated professional-registry record.
-- Explicit prescribing privilege.
-- Reauthentication before signing a prescription.
-- No public "register as a doctor" route.
+- The same central customer account, mobile number, and PIN as Terminal; signup and phone verification may happen at home.
+- A Hub session policy suited to a personal device, separate from the short-lived public-Terminal session.
+- No doctor endpoints and no automatic authorization of a Terminal payment merely because Hub is signed in.
+- Saved payment references are scoped to the customer account and usable only through an explicitly approved checkout.
 
-### 11.3 Clinical staff and administrators
+### 11.3 Advisor doctor
 
-- Individual named accounts.
-- Roles with least-privilege permissions.
-- Assistants may prepare drafts when delegated.
-- Only an authorized prescriber may issue a prescription.
-- An administrator does not gain prescribing authority merely by being an administrator.
+- Public doctor signup creates a pending account with identity/contact and professional details plus a strong password.
+- A single-use, expiring approval code goes only to the configured project-owner email. The owner reviews the application and shares the code with an accepted doctor outside Advisor; there is no admin page.
+- Pending sign-in shows **Waiting for Approval** and offers code entry, without doctor-function access. The backend activates only after the correct code is submitted and enforces rate limits and code replacement rules.
+- TOTP MFA for the academic implementation. The signup approval code does not replace login MFA.
+- Only an active authorized doctor can issue or revoke a prescription; recent authentication or reauthentication is required for issuing.
+- No assistant, organization-admin, delegated draft, or simulated professional-registry flow.
 
 ### 11.4 Identity model
 
-Use one base human-principal model with organization membership, roles, and application-specific policies. Authentication credentials are separate records so a patient PIN, clinician password, MFA enrollment, and recovery method are not overloaded into one field. Do not build unrelated human user tables for every frontend.
+The backend owns customer and doctor identities and applies separate authentication policies to each. A customer uses a mobile number and PIN; a doctor uses a stronger password, MFA, and pending/active account status. Password and PIN credentials must be hashed and never overloaded into one field. The eventual ERD determines whether these identities share a base user table or use separate models; this document does not pre-empt that design choice.
 
-The domain should distinguish:
-
-- Login identity.
-- Organization membership.
-- Professional credential.
-- Prescribing privilege.
-- Delegation.
-- Transaction signature.
-
-Customer, clinician, staff, and technician profiles may contain different domain data while still referencing the same base principal abstraction. API authorization is based on both the authenticated principal and the active role/privilege for the requested application.
+Prescription issue and claim are different operations: a doctor may issue to an intended patient identified by canonical phone number and recorded patient details before any customer account exists. The backend retains that prescription as unclaimed and non-dispensable. A customer must verify phone control, pass the patient-detail checks, and explicitly claim it before either Terminal or Hub may display its contents. Typed phone numbers alone are not authorization, and ambiguous claims require review.
 
 ### 11.5 Terminal identity
 
@@ -947,7 +928,7 @@ Offline support is intentionally limited and follows `NFR-7` and `NFR-8`.
 - Prescription retrieval or dispensing.
 - Insurance verification.
 - Card payment.
-- AutoDoc.
+- Advisor.
 - Cross-terminal receipt history.
 - Any operation requiring a current central authorization decision.
 
@@ -978,7 +959,7 @@ Every offline-capable dataset carries a server-issued version. On reconnect, the
 5. Downloads newer catalogue, price, rule, content, and planogram versions.
 6. Replaces local snapshots only after validation succeeds.
 
-The backend must tolerate duplicated events and process each event ID once. Conflicts are recorded for operator review rather than silently overwritten.
+The backend must tolerate duplicated events and process each event ID once. Conflicts are recorded for manual project-team review rather than silently overwritten; no operator frontend is required.
 
 ## 13. Security, observability, and deployment
 
@@ -995,7 +976,7 @@ The backend must tolerate duplicated events and process each event ID once. Conf
 
 All services use structured JSON logs with correlation IDs spanning API request, order, payment, hardware command, dispense, background job, and reconciliation event.
 
-Required operational views include:
+The software team shall be able to inspect these operational signals through logs, metrics, and development diagnostics; this does not imply a platform admin page:
 
 - Backend and database health.
 - Terminal heartbeat and last-seen time.
@@ -1027,11 +1008,14 @@ Database backups and a tested restore procedure are required for staging/demo re
 
 AutoPharm will use a GitHub monorepo.
 
+The following is a proposed target layout for the rebuild, not a claim about folders that exist in the currently reset checkout:
+
 ```text
 AutoPharm/
   apps/
-    kiosk-web/
-    autodoc-web/
+    terminal-web/
+    advisor-web/
+    hub-web/
     device-agent/
   backend/
   packages/
@@ -1087,21 +1071,25 @@ The frontend development servers may run directly on developer machines for fast
 At minimum, automated tests should cover:
 
 - Patient authentication and lockout.
-- Doctor invitation and activation.
+- Customer signup through both Terminal and Hub, with one central account.
+- Doctor signup, owner-email code delivery, pending sign-in, rate limits, expiry/replacement, and activation.
 - Prescribing-permission enforcement.
-- Staff draft versus prescriber signing.
+- Issue of an unclaimed prescription before any customer account exists.
+- Verified-phone and patient-detail claim checks, including mismatches and duplicate/ambiguous claims.
 - Prescription expiry and revocation.
 - Atomic partial dispensing.
 - Prevention of double dispensing.
 - Stock reservation and timeout.
 - Concurrent reservation/dispense attempts using real PostgreSQL transactions.
 - Payment idempotency.
+- Saved-method token ownership, explicit checkout approval, and provider-required authentication.
+- Hub location lookup and timestamped per-Terminal stock availability.
 - Timeout after payment authorization and before/after dispense confirmation.
 - Failed dispense and refund reconciliation.
 - Transactional-outbox redelivery and duplicate-event handling.
 - Power-loss recovery from each irreversible workflow state.
 - Offline OTC cash sale synchronization after reconnect.
-- Rejection of prescription, account, insurance, and card flows while offline.
+- Rejection of prescription, account, insurance, and digital-payment flows while offline.
 - Device-agent authentication and duplicate hardware commands.
 - Session destruction.
 - Arabic/English and RTL critical flows.
@@ -1124,7 +1112,7 @@ The repository will use:
 Suggested branch names:
 
 ```text
-feature/prescription-signing
+feature/prescription-issue
 feature/kiosk-session-timeout
 fix/duplicate-dispense-guard
 docs/insurance-model
@@ -1153,9 +1141,9 @@ Suggested project milestones:
 | Version | Milestone |
 |---|---|
 | `0.1.0` | Repository and development environment |
-| `0.2.0` | Customer authentication and sessions |
-| `0.3.0` | Catalogue, inventory, search, and cart |
-| `0.4.0` | AutoDoc and prescriptions |
+| `0.2.0` | Shared customer authentication, Terminal and Hub sessions |
+| `0.3.0` | Hub location/stock discovery plus catalogue, inventory, search, and cart |
+| `0.4.0` | H.A.V.E Advisor, doctor approval, and phone-addressed prescriptions |
 | `0.5.0` | Payment and dispensing simulation |
 | `0.6.0` | Insurance simulation |
 | `0.7.0` | Receipts and ETA simulation |
@@ -1163,15 +1151,15 @@ Suggested project milestones:
 | `0.9.0` | Feature complete and examiner rehearsal |
 | `1.0.0` | Graduation demonstration release |
 
-For the graduation project, all components should normally share one project version. This is simpler than independently versioning the kiosk, AutoDoc, backend, and device agent.
+For the graduation project, all components should normally share one project version. This is simpler than independently versioning Terminal, Advisor, Hub, the backend, and the device agent.
 
 The version should be available in:
 
 - Git tag, such as `v0.4.0`.
 - GitHub Release.
 - Application build metadata.
-- AutoPharm maintenance/about screen.
-- AutoDoc footer or about screen.
+- Terminal and Hub about screens.
+- Advisor footer or about screen.
 - Backend health/version endpoint.
 
 ---
@@ -1190,7 +1178,7 @@ The version should be available in:
 | Microservices | Rejected for the graduation-project team and scope |
 | GraphQL | Rejected initially; REST is simpler for this system |
 | Redux by default | Rejected; TanStack Query plus local state is sufficient initially |
-| One combined kiosk/doctor frontend | Rejected; AutoDoc is an independent application and security boundary |
+| One combined frontend for all users | Rejected; Terminal, Advisor, and Hub have different users, environments, and security boundaries |
 | Deep inheritance-based OOP | Rejected; use interface-driven composition and small focused objects |
 | Repository class for every Django model | Rejected; use the ORM/querysets unless a meaningful boundary exists |
 | One database transaction across payment and hardware | Impossible/rejected; use durable states, idempotency, and compensation |
@@ -1205,13 +1193,13 @@ The version should be available in:
 3. Define identity, terminal identity, audit events, idempotency records, and state-machine conventions.
 4. Establish OpenAPI and the shared frontend API client.
 5. Create the shared design tokens and core UI components.
-6. Create the AutoPharm React shell with Arabic/English, RTL, and explicit offline capability guards.
-7. Implement customer accounts and kiosk sessions.
-8. Implement catalogue, inventory, cart, stock reservations, and safe local catalogue snapshots.
-9. Create AutoDoc with invitation-only clinician authentication and patient matching.
-10. Implement structured prescription drafting, signing, retrieval, and revocation.
-11. Implement order, payment, and dispensing process states with idempotency and compensation.
-12. Add the authenticated local device-agent interface, durable journal, mocks, and recovery path.
+6. Create Terminal, Advisor, and Hub React shells, with shared design tokens and API contracts. Terminal adds Arabic/English, RTL, and explicit offline capability guards.
+7. Implement customer accounts, phone verification, Terminal sessions, and Hub sessions.
+8. Implement doctor signup, owner-email approval code, pending state, MFA, and prescribing authorization.
+9. Implement phone-addressed prescription issue, secure claim, retrieval, and revocation.
+10. Implement catalogue, per-Terminal inventory, location lookup, cart, reservations, and safe local catalogue snapshots.
+11. Implement order, payment (including simulated provider-backed saved methods), and dispensing process states with idempotency and compensation.
+12. Add the authenticated local device-agent integration contract, durable journal, mocks, and recovery path with the hardware collaborators; their maintenance mode is out of this software scope.
 13. Add Celery/Redis and the transactional outbox for notifications, receipts, and simulated integrations.
 14. Complete insurance, receipts, ETA, monitoring, and designed failure states.
 15. Rehearse local/LAN demo deployment, restore from backup, power-loss recovery, and network loss.
@@ -1236,4 +1224,4 @@ Non-sensitive offline cache + durable recovery journal
 GitHub monorepo + Semantic Versioning
 ```
 
-This architecture keeps the project understandable for five developers, supports the kiosk and AutoDoc as separate applications, preserves transactional correctness without pretending external systems share a database transaction, allows Python-based integrations, supports the required offline degradation, and avoids letting a hosting platform replace the project's own backend design.
+This architecture keeps the project understandable for five developers, supports Terminal, Advisor, and Hub as separate applications on one backend, preserves transactional correctness without pretending external systems share a database transaction, allows Python-based integrations, supports the required offline degradation, and avoids letting a hosting platform replace the project's own backend design. H.A.V.E Operation remains on standby rather than part of the current frontend count.
