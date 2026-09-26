@@ -1,6 +1,6 @@
-# Smart Pharmacy Kiosk — Requirements Specification
+# H.A.V.E — Requirements Specification
 
-**Version** 0.6 · **Market:** Egypt (academic scope) · **Scope:** the application running on the vending machine plus the small, independent AutoDoc clinician portal that supplies structured prescriptions. Hardware selection, enclosure, and robotics are out of scope except where the app must talk to them.
+**Version** 0.7 · **Market:** Egypt (academic scope) · **Scope:** three frontend applications—H.A.V.E Terminal, H.A.V.E Advisor, and H.A.V.E Hub—connected to one central backend. H.A.V.E means **Health Access & Vending Everywhere**. AutoPharm remains the project/repository name. Hardware selection, enclosure, and robotics are out of scope except where Terminal must talk to them.
 
 ---
 
@@ -8,15 +8,15 @@
 
 ### 0.1 Resolved
 
-| #   | Decision                | Resolution                                                                                                                                                                                                                                                                                                                                                     |
-| --- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D-1 | Identity primitive      | **Mobile number + 4-digit PIN.** Verification by SMS one-time code. Fastest thing to enter on a wall-mounted terminal.                                                                                                                                                                                                                                         |
-| D-2 | Target market           | **Egypt.** Currency EGP, Arabic primary with English secondary, Egyptian regulatory regime throughout.                                                                                                                                                                                                                                                         |
-| D-7 | Guest proof of purchase | **Resolved by D-3.** A guest prints a receipt at the terminal (ALWAYS for user or guest), or + optionally types an email address, or optionally creates an account afterwards to retain it. No guest leaves with nothing.                                                                                                                                      |
-| D-3 | Receipt delivery        | **Three routes: printed, emailed, stored in the account.** A thermal ESC/POS printer closes the guest gap. Signed-in users always get account storage, with email and print as options; guests get print, or email if they choose to type an address. Every sale also produces an ETA-format e-receipt, generated for real against a mock submission endpoint. |
-| D-5 | Prescription source model | **Small independent AutoDoc web portal.** AutoDoc uses the same design system but its own frontend, routes, authentication policy and clinician roles. It sends structured, signed prescription records to the central backend; it never connects directly to kiosks. Clinicians are invitation-only and bound to a simulated professional-registry record. Clinical assistants may prepare drafts but only an authorized clinician may sign or revoke. Controlled/narcotic medicines are excluded from the prototype. |
-| D-4 | Guidance engine | **Decision tree → product lookup table.** Each leaf is a defined answer. Recommendation leaves map to an explicitly ranked set of products in a mapping table; red-flag leaves provide escalation instead. No model, LLM, training process, or training data. The tree and mappings are versioned, work offline, and make each recommendation explainable in one sentence. |
-| D-6 | Insurance simulation | **One fictional insurance company with fictional members and policies.** Implement eligibility, coverage calculations, and claim reconciliation against simulated insurer responses. The initial plan uses a configurable fixed coverage percentage for eligible products, explicit exclusions, and valid/expired policies. Demonstrate approval, rejection, and timeout. Caps and deductibles are deferred. |
+| #   | Decision                  | Resolution                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-1 | Identity primitive        | **Mobile number + 4-digit PIN.** Verification by SMS one-time code. Fastest thing to enter on a wall-mounted terminal.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| D-2 | Target market             | **Egypt.** Currency EGP, Arabic primary with English secondary, Egyptian regulatory regime throughout.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| D-7 | Guest proof of purchase   | **Resolved by D-3.** A guest prints a receipt at the terminal (ALWAYS for user or guest), or + optionally types an email address, or optionally creates an account afterwards to retain it. No guest leaves with nothing.                                                                                                                                                                                                                                                                                              |
+| D-3 | Receipt delivery          | **Three routes: printed, emailed, stored in the account.** A thermal ESC/POS printer closes the guest gap. Signed-in users always get account storage, with email and print as options; guests get print, or email if they choose to type an address. Every sale also produces an ETA-format e-receipt, generated for real against a mock submission endpoint.                                                                                                                                                         |
+| D-5 | Prescription source model | **Independent H.A.V.E Advisor doctor app.** Advisor uses the same design system but has its own frontend and doctor authentication. It sends structured prescriptions to the central backend; it never connects directly to Terminal or Hub. A doctor may issue to a patient phone number confirmed during the visit before that person has an account. The prescription stays unclaimed until that person creates/signs into an account and passes the claim checks. Doctors sign up in Advisor but cannot access doctor functions until the project owner reviews their application and shares the one-time approval code sent to the owner's fixed email address. There is no admin page, clinical-assistant role, or prescription draft workflow. Controlled/narcotic medicines are excluded from the prototype. |
+| D-4 | Guidance engine           | **Decision tree → product lookup table.** Each leaf is a defined answer. Recommendation leaves map to an explicitly ranked set of products in a mapping table; red-flag leaves provide escalation instead. No model, LLM, training process, or training data. The tree and mappings are versioned, work offline, and make each recommendation explainable in one sentence.                                                                                                                                             |
+| D-6 | Insurance simulation      | **One fictional insurance company with fictional members and policies.** Implement eligibility, coverage calculations, and claim reconciliation against simulated insurer responses. The initial plan uses a configurable fixed coverage percentage for eligible products, explicit exclusions, and valid/expired policies. Demonstrate approval, rejection, and timeout. Caps and deductibles are deferred.                                                                                                           |
 
 ### 0.2 Implementation scope — graduation project
 
@@ -26,7 +26,7 @@ This is an academic project and will not be operated commercially. Requirements 
 | ------------ | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | **BUILD**    | Implemented in code and demonstrable                                                      | Everything in §2, §3, §4 unless noted                                             |
 | **DOCUMENT** | Analysed and written up, not implemented                                                  | §5 regulatory and privacy requirements                                            |
-| **SIMULATE** | Real logic, stubbed endpoint — the thing the endpoint would receive is genuinely produced | Payment, dispensing hardware, SMS gateway, insurance adjudication, ETA submission |
+| **SIMULATE** | Real logic, stubbed endpoint — the thing the endpoint would receive is genuinely produced | Payment (including provider-backed saved methods), dispensing hardware, SMS gateway, insurance adjudication, ETA submission |
 
 The receipt printer is real hardware and cheap, so it is BUILD rather than SIMULATE. Keep the print path behind an interface so the system still runs end-to-end if the printer is unavailable on demo day — a hardware failure in front of examiners should degrade to on-screen, not crash the flow.
 
@@ -42,20 +42,17 @@ D-4 and D-6 are resolved above. Exact fictional insurance percentages and produc
 
 ## 1. Context and actors
 
-**System boundary.** A kiosk application running locally on a 1024×600 touchscreen terminal and a separate AutoDoc clinician web portal, backed by one central service. One central backend serves the terminal fleet and AutoDoc. AutoDoc and kiosks never communicate directly.
+**System boundary.** Three independent frontends use one central backend: **H.A.V.E Terminal** runs on a 1024×600 kiosk touchscreen, **H.A.V.E Advisor** is the doctor web app, and **H.A.V.E Hub** is the customer app usable from home. The frontends communicate through the backend, never directly with one another. A fourth frontend, **H.A.V.E Operation**, is only an idea on standby; it is not part of this build.
 
-| Actor                  | Interaction                                                                                  |
-| ---------------------- | -------------------------------------------------------------------------------------------- |
-| Guest customer         | Walks up, browses, uses symptom guidance, buys OTC, leaves. No account. Majority of traffic. |
-| Account holder         | Signs in to access prescriptions, saved insurance, order history.                            |
-| Prescribing doctor     | Uses AutoDoc to issue or revoke a structured prescription in a patient's central account. Never touches the kiosk. |
-| Clinical assistant     | Uses AutoDoc to prepare delegated drafts; cannot sign, issue or revoke prescriptions.         |
-| Remote pharmacist      | Reached from the kiosk for advice; may be required to authorise certain dispenses.           |
-| Field technician       | Restocks, services, runs diagnostics. Uses a separate maintenance mode.                      |
-| Operator / back office | Manages catalogue, pricing, planogram, fleet monitoring.                                     |
-| Payment processor      | External, via the card terminal.                                                             |
-| Insurance adjudicator  | External, per company, for eligibility and claim submission.                                 |
-| Email service          | Transactional delivery of codes and receipts.                                                |
+| Actor                  | Interaction                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Guest customer         | Walks up, browses, uses symptom guidance, buys OTC, leaves. No account. Majority of traffic.                       |
+| Account holder         | Signs up through Terminal or Hub; uses either to access claimed prescriptions, saved insurance, and order history. |
+| Prescribing doctor     | Uses Advisor to issue or revoke a structured prescription addressed to a patient's phone, even before an account exists. |
+| Project owner / approver | Reviews doctor signup details from a notification sent to a fixed email address and shares the approval code with the doctor if accepted; does not use an admin app. |
+| Operator / back office | Initially manages catalogue, pricing, planogram, and stock through controlled backend/database procedures; no Operation app yet. |
+| Payment provider mock  | Simulated digital payment authorisation and capture; no physical card reader.                                      |
+| Email service          | Transactional delivery of codes and receipts.                                                                      |
 
 ---
 
@@ -109,24 +106,24 @@ D-4 and D-6 are resolved above. Exact fictional insurance percentages and produc
 
 ### 2.6 Identity and accounts
 
-- **FR-29** Sign-in shall be requested only at the point it is needed: prescriptions, saved insurance, order history.
+- **FR-29** Terminal sign-in shall be requested only at the point it is needed: prescriptions, saved insurance, order history, or saved payment. Hub may offer sign-in when the customer opens the app.
 - **FR-30** Sign-in shall use **mobile number + 4-digit PIN**, entered on a numeric keypad with masked PIN entry.
 - **FR-30a** Mobile numbers shall be validated against Egyptian numbering (11-digit national format, 010/011/012/015 prefixes) and stored in a single canonical form (E.164) regardless of how the user types them.
-- **FR-31** Sign-up shall be completable at the kiosk in under two minutes and shall require verification of the mobile number via an SMS one-time code.
+- **FR-31** Sign-up shall be available through either Terminal (completable in under two minutes) or Hub from the customer's own device. Both routes shall verify control of the mobile number via an SMS one-time code and create an account in the same central backend.
 - **FR-32** PIN reset shall be possible at the kiosk without staff involvement, in this exact sequence: enter mobile number → _Forgot PIN?_ → SMS containing a **6-digit reset code** → enter code → set a new **4-digit PIN** → confirm new PIN → signed in.
 - **FR-32a** The 6-digit reset code shall be single-use, shall expire on a short timer, and shall be invalidated once a new PIN is set or a newer code is issued.
 - **FR-32b** Note the deliberate asymmetry: the **PIN is 4 digits** (typed often, protected by lockout) while the **reset code is 6 digits** (typed once, must resist guessing because it can change the PIN).
-- **FR-33** A QR fast path shall allow sign-in by scanning a code from the companion app.
+- **FR-33** A QR fast path shall allow Terminal sign-in by scanning a short-lived, one-use code displayed by Hub, with explicit confirmation on the customer's device.
 - **FR-34** Repeated failed PIN attempts shall lock the account temporarily, with exponential back-off, and the attempt counter shall be enforced server-side.
 - **FR-34a** Because a 4-digit PIN has only 10,000 combinations, the system shall additionally rate-limit per mobile number, per terminal, and per source, and shall reject trivially guessable PINs (repeated digits, sequences, common patterns).
-- **FR-34b** _(DOCUMENT, not BUILD)_ Recycled mobile numbers: in production, prolonged account inactivity would force re-verification before prescription or insurance data is exposed, so a reassigned number could not inherit a stranger's medical history. Out of scope for the project build; worth a paragraph in the report as a known production gap.
+- **FR-34b** _(DOCUMENT, not BUILD)_ Recycled mobile numbers: in production, prolonged account inactivity would force re-verification before prescription or insurance data is exposed, so a reassigned number could not inherit a stranger's medical history. Unclaimed prescriptions addressed to a phone number carry the same risk; safe real-world claiming would require stronger patient matching than phone possession alone. Out of scope for the project build; document this production gap explicitly.
 - **FR-34c** SMS delivery failure shall not strand the user — offer resend, an alternative channel where available, and a clear route to continue as a guest.
 - **FR-35** Sign-out shall be automatic at session end and available manually at any time.
 - **FR-36** A guest shall be able to complete an OTC purchase without ever creating an account, and account creation shall never be a precondition for payment.
 
 ### 2.7 Prescriptions
 
-- **FR-37** A signed-in user shall see their prescriptions split into current and previous, with issuing doctor, clinic, date, and status.
+- **FR-37** A signed-in user shall see their claimed prescriptions in Terminal and Hub, split into current and previous, with issuing doctor, clinic, date, and status.
 - **FR-38** Prescription detail shall show each line item with quantity prescribed, quantity already dispensed, refills remaining, and availability in this terminal.
 - **FR-39** The app shall clearly mark line items this terminal cannot fulfil and state why (not stocked, out of stock, not dispensable by machine).
 - **FR-40** Partial fulfilment shall be supported: the user may collect what is available while the remainder stays open for another kiosk or a branch.
@@ -134,6 +131,10 @@ D-4 and D-6 are resolved above. Exact fictional insurance percentages and produc
 - **FR-42** Expired, fully dispensed, and revoked prescriptions shall be non-dispensable and clearly labelled.
 - **FR-43** The system shall enforce controlled-substance rules for the target jurisdiction, including any items the machine must refuse entirely.
 - **FR-44** Prescription data shall be fetched per session and never cached on the terminal beyond session end.
+- **FR-44a** A prescriber may issue a structured prescription to a patient's canonical phone number before an account exists. The backend shall retain it as **unclaimed**, without creating a patient account or making it dispensable.
+- **FR-44b** After the person registers or signs in through Terminal or Hub and proves control of that phone number, the backend shall match eligible unclaimed prescriptions against the patient details the prescriber recorded and require explicit claim confirmation before attaching them to the account. No prescription contents shall be shown before those checks pass. A typed number or possession of an authenticated session alone shall never reveal prescription contents or authorize a claim.
+- **FR-44c** A prescription claimed through Hub shall be usable from any eligible Terminal after sign-in, subject to the same prescription validity, stock, and dispensing checks. The person shall not have to return to the doctor merely to have it assigned to a newly created account.
+- **FR-44d** Ambiguous, mismatched, expired, revoked, or disputed claims shall be blocked from automatic attachment and dispensing and shall have a reviewed correction path. All issue, claim, correction, and dispense actions shall be auditable. The exact patient-matching evidence and claim-expiry policy must be resolved during design before implementation.
 
 ### 2.8 Insurance
 
@@ -148,12 +149,14 @@ D-4 and D-6 are resolved above. Exact fictional insurance percentages and produc
 
 ### 2.9 Payment
 
-- **FR-52** The app shall support card payment via the integrated terminal, and cash if the hardware is fitted.
-- **FR-53** The app shall never handle raw card data; all capture occurs on the certified reader.
-- **FR-54** Payment screens shall give explicit physical instructions ("insert your card") and live status.
+- **FR-52** The app shall support digitally mocked payment without a physical card reader, and cash if the hardware is fitted.
+- **FR-53** The H.A.V.E backend and frontends shall never capture or store raw card data. At Terminal and in Hub, the academic payment-provider flow is simulated without real card credentials; saving a method returns an opaque reference.
+- **FR-54** Payment screens shall give clear digital confirmation instructions and live status; they shall not instruct customers to use a card reader.
 - **FR-55** Authorisation shall precede dispensing; capture shall follow successful dispensing.
 - **FR-56** A failed or declined payment shall return the user to a recoverable state with the cart intact and an alternative offered.
 - **FR-57** Payment shall be idempotent: no retry, timeout, or reconnect may charge a customer twice.
+- **FR-57a** Hub shall let an authenticated customer save and remove provider-backed payment methods for later use at any Terminal. The backend shall store only provider-issued references/tokens and display-safe metadata, never a card number, security code, or other raw payment credentials.
+- **FR-57b** At Terminal, using a saved method shall require an explicit customer-approved, amount-specific payment action and normal provider authorization. The flow should avoid repeated card-detail entry where the provider permits; it shall not promise to bypass an OTP or other verification required by the issuer or provider.
 
 ### 2.10 Dispensing
 
@@ -173,7 +176,7 @@ D-4 and D-6 are resolved above. Exact fictional insurance percentages and produc
 - **FR-64d** The completion screen shall also **display** the receipt — line items, insurance breakdown, total, order reference — so it can be read or photographed before the user leaves.
 - **FR-64e** Printer faults (paper out, jam, offline) shall be detected **before** the print option is offered; the option shall be hidden or disabled rather than failing after selection. Paper level shall be reported on the fleet monitoring heartbeat (FR-74).
 - **FR-64f** A print failure after a completed sale shall never lose the receipt: fall back to on-screen display and offer email.
-- **FR-64g** PDF download shall be offered in the web/companion account, not on the kiosk. A kiosk has no user device attached, so a download there would write a file to the terminal's own filesystem where the user can never retrieve it.
+- **FR-64g** PDF download shall be offered in Hub, not on Terminal. A kiosk has no user device attached, so a download there would write a file to the terminal's own filesystem where the user can never retrieve it.
 - **FR-65** A user choosing email shall enter the address via the keyboard overlay; a visible skip shall always be present and skipping shall not block completion.
 - **FR-66** A guest shall be offered optional account creation after payment, which shall retroactively attach the just-completed receipt to the new account; this shall be skippable and shall not block completion.
 - **FR-67** Signed-in users shall access receipt history from any terminal, with full line items, insurance breakdown, reprint and resend-by-email at the kiosk, and PDF download on the web.
@@ -190,31 +193,41 @@ D-4 and D-6 are resolved above. Exact fictional insurance percentages and produc
 - **FR-72** Every error state shall offer at least one forward action and shall never dead-end.
 - **FR-73** When the terminal cannot trade, the attract screen shall say so before the user invests effort in a session.
 
-### 2.13 Operations and administration
+### 2.13 Catalogue and stock data
+
+Hardware maintenance mode, diagnostics, and technician access belong to the hardware collaborators; this software team does not build a technician app or maintenance-mode interface.
 
 - **FR-74** The terminal shall report health, stock levels, peripheral status, and connectivity to the central service on a heartbeat.
-- **FR-75** Catalogue, pricing, and planogram shall be centrally managed and pushed to terminals.
+- **FR-75** Catalogue, pricing, stock, and planogram shall be stored centrally and made available to Terminal and Hub as appropriate. Initially, the software project team shall configure product and price records using controlled seed/database procedures; stock shall still change through restock and confirmed-dispense transactions. A dedicated H.A.V.E Operation frontend is deferred.
 - **FR-76** The system shall track batch and expiry per stocked unit and shall block dispensing of expired stock.
-- **FR-77** A maintenance mode shall be reachable by an authenticated technician for restocking and diagnostics, and shall be inaccessible to the public.
 - **FR-78** Software updates shall be deployable remotely to the fleet and shall never interrupt an active session.
 - **FR-79** The system shall retain a full audit trail of every dispense, payment, prescription action, and insurance claim.
 
-### 2.14 AutoDoc clinician portal
+### 2.14 H.A.V.E Advisor doctor app
 
-- **FR-80** AutoDoc shall be an independent web application that shares AutoPharm design tokens and core UI components but has its own routes, build, authentication policy and authorization boundary.
-- **FR-81** AutoDoc shall communicate only with the central backend and shall never connect directly to a kiosk terminal.
-- **FR-82** Clinician accounts shall be invitation-only; AutoDoc shall not offer a public "register as a doctor" workflow.
-- **FR-83** A clinician account shall be bound server-side to a fictional record in the project's simulated Egyptian professional registry before prescribing access can be approved.
-- **FR-84** Clinicians shall use a strong password and multi-factor authentication. Signing a prescription shall require recent authentication or explicit reauthentication.
-- **FR-85** AutoDoc shall distinguish organization administrator, prescriber and clinical-assistant roles. Administrative authority shall not imply prescribing authority.
-- **FR-86** A clinical assistant may prepare a prescription draft when delegated but shall not issue, sign or revoke a prescription.
-- **FR-87** The prescriber shall select a uniquely matched patient record and confirm patient identity details before signing. A prescription shall not be attached solely from an unverified typed mobile number.
-- **FR-88** The authoritative prescription shall be structured data, not an uploaded PDF or image. It shall record patient, prescriber, clinic, issue and expiry timestamps, medicine identifiers, dosage instructions, quantity, refill rules, status and signature metadata.
-- **FR-89** Only an authorized prescriber within valid simulated scope shall move a prescription from ready-for-review to signed/issued.
-- **FR-90** AutoDoc shall support prescription revocation with a required reason, actor and timestamp. Signed clinical content shall be versioned rather than overwritten.
-- **FR-91** Every AutoDoc login, invitation, privilege change, draft, signature, issue and revocation action shall be audit-logged.
-- **FR-92** Controlled and narcotic medicines shall be excluded from the AutoDoc prototype.
-- **FR-93** AutoDoc shall show prescription delivery/status information from the central backend but shall not directly command dispensing hardware.
+- **FR-80** Advisor shall be an independent doctor-facing web application that shares H.A.V.E design tokens and core UI components but has its own routes, build, authentication policy and authorization boundary. It shall have no admin page or clinical-assistant interface.
+- **FR-81** Advisor shall communicate only with the central backend and shall never connect directly to Terminal or Hub.
+- **FR-82** Advisor shall provide a doctor signup form for identity/contact and professional details plus a strong password. Submitting the form shall create a **pending** doctor account, not an active prescribing account. No admin page or simulated professional-registry integration is required.
+- **FR-82a** On signup, the backend shall generate a short-lived, single-use approval code and send it, with the application details needed for review, to one configured project-owner email address. Passwords, password hashes, and other secrets shall never be included in that email.
+- **FR-82b** The project owner shall review the doctor application outside Advisor. If approved, the owner shares the code with that doctor through a chosen direct channel. Sharing the code is the manual approval step; no separate admin interface is required.
+- **FR-82c** The doctor shall enter the code in Advisor. Only a correct, unexpired, unused code for that pending account shall activate it. Until activation, sign-in attempts shall show a **Waiting for Approval** screen with a code-entry option, but shall not grant access to prescribing. A rejected or expired application shall remain unable to access doctor functions; the owner may simply withhold the code.
+- **FR-82d** A code that expires before approval shall be replaceable by a new code sent only to the configured owner email. Newer codes shall invalidate older ones, and code-entry attempts shall be rate-limited. The applicant shall not be able to obtain the approval code directly from the app.
+- **FR-84** Doctors shall use a strong password and multi-factor authentication. The approval code is for account activation, not a substitute for login MFA. Issuing a prescription shall require recent authentication or explicit reauthentication.
+- **FR-87** Before signing, the prescriber shall confirm the patient's identifying details and canonical phone number. An existing account may be identified, but one is **not required**: when none exists, Advisor shall issue an unclaimed prescription addressed to that phone. Entering a number in Advisor shall not by itself attach a prescription to an account or reveal a customer's account data.
+- **FR-88** The authoritative prescription shall be structured data, not an uploaded PDF or image. It shall record the intended patient's identifying details and phone number (and account link only after a safe claim), prescriber, clinic, issue and expiry timestamps, medicine identifiers, dosage instructions, quantity, refill rules, status and signature metadata.
+- **FR-89** Only an authorized doctor account may issue a prescription. There is no delegated draft or review workflow.
+- **FR-90** Advisor shall support prescription revocation with a required reason, actor and timestamp. Signed clinical content shall be versioned rather than overwritten.
+- **FR-91** Doctor signup, approval-code issuance and use, account activation, login, prescription issue, and revocation shall be audit-logged. The owner reviews applications through email, not through an admin page.
+- **FR-92** Controlled and narcotic medicines shall be excluded from the Advisor prototype.
+- **FR-93** Advisor shall show prescription delivery/claim/status information from the central backend but shall not directly command dispensing hardware.
+
+### 2.15 H.A.V.E Hub customer app
+
+- **FR-94** Hub shall be a separate customer-facing app usable away from a Terminal, connected to the same central backend and customer accounts.
+- **FR-95** A customer shall be able to create an account at home, verify a phone number, sign in, reset a PIN, and view claimed prescriptions and order/receipt history. A customer who has no account when the doctor issues a prescription may register later and claim it without another clinic visit, subject to FR-44b–FR-44d.
+- **FR-96** Hub shall show nearby Terminal locations using a map or location list, with address and availability status. The customer shall be able to select a location manually without granting device-location access.
+- **FR-97** Hub shall let customers browse/search the catalogue and check product availability and price for a selected Terminal. Availability is advisory and timestamped; it is not a reservation or guarantee until the backend confirms a checkout reservation.
+- **FR-98** Hub shall support managing saved provider-backed payment methods for faster in-person checkout, subject to FR-57a–FR-57b. Saving a payment method shall be optional and shall not be required to browse, claim a prescription, or pay through another supported route.
 
 ---
 
@@ -232,7 +245,7 @@ D-4 and D-6 are resolved above. Exact fictional insurance percentages and produc
 
 - **NFR-6** Target 99.5% terminal availability during trading hours.
 - **NFR-7** The catalogue, browse, search, symptom guidance, and cart shall function with the network down.
-- **NFR-8** Prescriptions, insurance, account sign-in, and card payment require connectivity; their unavailability shall degrade gracefully to a clearly explained cash-and-OTC mode rather than taking the terminal offline.
+- **NFR-8** Prescriptions, insurance, account sign-in, and mocked digital payment require connectivity; their unavailability shall degrade gracefully to a clearly explained cash-and-OTC mode if cash hardware is fitted, rather than taking the terminal offline.
 - **NFR-9** No single failure — network, backend, insurer, email — shall be able to take money without delivering goods, or deliver goods without recording the transaction.
 - **NFR-10** Transactions interrupted by power loss shall be reconciled automatically on restart.
 - **NFR-11** Outbound transactional email shall be queued and retried.
@@ -275,10 +288,13 @@ D-4 and D-6 are resolved above. Exact fictional insurance percentages and produc
 - **SEC-9** Session tokens shall be short-lived, bound to the terminal and session, and invalidated on session end.
 - **SEC-10** Personal and health data shall be encrypted at rest centrally and shall not be persisted on the terminal.
 - **SEC-11** Prescription access shall be authorised per request against the authenticated account; a terminal shall never be able to enumerate prescriptions.
-- **SEC-12** All privileged actions — maintenance mode, restock, price change, refund — shall require authenticated identity and shall be audit-logged immutably.
+- **SEC-12** Software-controlled privileged actions, including doctor-account activation, prescription issue/revocation, and refunds, shall require authorization and shall be audit-logged immutably. Doctor-account activation additionally requires the single-use owner-controlled approval code. Hardware maintenance access is the hardware team's responsibility; initial prices are configured manually in the database.
 - **SEC-13** Input from every source shall be validated server-side. Guidance tree and lookup-table publications shall be validated for valid branches, reachable outcomes, permitted products, and safety restrictions before distribution. Offline guidance shall use a validated versioned snapshot; client recommendations shall never bypass backend checkout or prescribing authorization.
 - **SEC-14** The system shall defend against automated abuse of the code-sending endpoints (email bombing, enumeration of registered accounts).
 - **SEC-15** Physical tamper events shall be detectable and shall raise an alert.
+- **SEC-16** Terminal and Hub customer sessions shall have separate token/session policies. A Hub login or saved method shall never silently authorize a Terminal payment, and any Terminal session shall be cleared for the next visitor.
+- **SEC-17** Unclaimed prescription lookup and claim attempts shall be server-side rate-limited and audited, shall not expose whether a phone number has a prescription to an unauthorized caller, and shall enforce the patient-detail checks in FR-44b. Disputed claims shall be suspended until reviewed.
+- **SEC-18** Saved payment-method references shall be bound to the customer account, usable only after server-side authorization and the payment-provider's required checks, and revocable by the customer. Raw card data shall remain outside H.A.V.E application storage.
 
 ---
 
@@ -326,20 +342,21 @@ Egypt's **Personal Data Protection Law No. 151 of 2020** became fully operationa
 
 ## 6. Integration requirements
 
-| Integration                                                                                        | Direction            | Criticality                     | Failure behaviour                                                                   |
-| -------------------------------------------------------------------------------------------------- | -------------------- | ------------------------------- | ----------------------------------------------------------------------------------- |
-| Dispensing controller                                                                              | Bidirectional, local | Blocking                        | Terminal cannot trade; report out of service                                        |
-| Payment terminal (Meeza, Visa/Mastercard via local acquirer; mobile wallets, InstaPay if in scope) | Bidirectional, local | Blocking for card               | Fall back to cash if fitted, else out of service                                    |
-| Thermal receipt printer (ESC/POS, USB or serial)                                                   | Outbound, local      | Optional                        | Hide the print option; fall back to on-screen and email                             |
-| QR / camera                                                                                        | Inbound, local       | Optional                        | Fall back to manual entry                                                           |
-| Central backend                                                                                    | Bidirectional        | Partial                         | Offline mode: OTC + cash only                                                       |
-| SMS gateway (OTP)                                                                                  | Outbound             | Blocking for sign-in/sign-up    | Retry, offer resend, guest route stays open                                         |
-| **ETA e-receipt system**                                                                           | Outbound             | Deferred-blocking               | Queue and retry within the permitted window; never hold the customer                |
-| **EPTTS track & trace**                                                                            | Outbound             | Deferred-blocking               | Queue dispense events; reconcile when connectivity returns                          |
-| Insurance adjudicator / TPA                                                                        | Outbound             | Optional                        | Skip insurance, full price                                                          |
-| AutoDoc prescription source                                                                        | Internal via central API | Optional for kiosk operation | AutoDoc unavailable: existing central prescriptions remain available; creating new prescriptions is unavailable; OTC kiosk mode continues |
-| Email service                                                                                      | Outbound             | Optional                        | Queue and retry; never block a sale                                                 |
-| Remote pharmacist                                                                                  | Bidirectional        | **Possibly blocking — see REG-2 (DOCUMENT scope)** | If pharmacist authorisation is legally required, no dispense may proceed without it |
+| Integration                                                                                        | Direction                | Criticality                                        | Failure behaviour                                                                                                                         |
+| -------------------------------------------------------------------------------------------------- | ------------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Dispensing controller                                                                              | Bidirectional, local     | Blocking                                           | Terminal cannot trade; report out of service                                                                                              |
+| Mock digital payment provider                                                                    | Bidirectional, network   | Blocking for digital payment                       | Fall back to cash if fitted, else pause checkout                                                                                          |
+| Thermal receipt printer (ESC/POS, USB or serial)                                                   | Outbound, local          | Optional                                           | Hide the print option; fall back to on-screen and email                                                                                   |
+| QR / camera                                                                                        | Inbound, local           | Optional                                           | Fall back to manual entry                                                                                                                 |
+| Central backend                                                                                    | Bidirectional            | Partial                                            | Offline mode: OTC + cash only                                                                                                             |
+| SMS gateway (OTP)                                                                                  | Outbound                 | Blocking for sign-in/sign-up                       | Retry, offer resend, guest route stays open                                                                                               |
+| **ETA e-receipt system**                                                                           | Outbound                 | Deferred-blocking                                  | Queue and retry within the permitted window; never hold the customer                                                                      |
+| **EPTTS track & trace**                                                                            | Outbound                 | Deferred-blocking                                  | Queue dispense events; reconcile when connectivity returns                                                                                |
+| Insurance adjudicator / TPA                                                                        | Outbound                 | Optional                                           | Skip insurance, full price                                                                                                                |
+| H.A.V.E Advisor prescription source                                                                | Internal via central API | Optional for Terminal operation                    | Advisor unavailable: existing central prescriptions remain available; creating new prescriptions is unavailable; OTC Terminal mode continues |
+| H.A.V.E Hub                                                                                         | Bidirectional via central API | Optional for Terminal operation                | Hub unavailable: Terminal remains usable; Hub signup, browsing, and saved-method management are unavailable |
+| Email service                                                                                      | Outbound                 | Blocking for doctor signup approval; optional for sales | Queue and retry; an unsent approval code keeps the doctor account pending but never blocks a customer sale                         |
+| Remote pharmacist                                                                                  | Bidirectional            | **Possibly blocking — see REG-2 (DOCUMENT scope)** | If pharmacist authorisation is legally required, no dispense may proceed without it                                                       |
 
 ---
 
@@ -352,7 +369,7 @@ Egypt's **Personal Data Protection Law No. 151 of 2020** became fully operationa
 - **C-6** Currency is EGP. Prices are regulated and change by government decision, so pricing must be centrally updatable at short notice.
 - **C-7** Cash remains significant in the Egyptian retail market; a card-only terminal will exclude a meaningful share of customers.
 - **C-5** Network connectivity is assumed intermittent, not guaranteed.
-- **A-1** Doctors issue structured digital prescriptions through AutoDoc into the central backend and never interact directly with a kiosk terminal.
+- **A-1** Doctors issue structured digital prescriptions through Advisor into the central backend, including for people who have not registered, and never interact directly with a Terminal.
 - **A-2** Restocking is manual and periodic; the app does not control inventory arrival.
 - **A-3** A licensed pharmacist is reachable during defined hours. **For a future commercial deployment, any pharmacist-authorisation requirement discussed in REG-2 would affect operating hours and staffing; this is independent of the resolved D-4 guidance algorithm.**
 - **A-4** The operator holds, or can obtain, the pharmacy licence under which these machines trade.
@@ -361,4 +378,4 @@ Egypt's **Personal Data Protection Law No. 151 of 2020** became fully operationa
 
 ## 8. Explicitly out of scope (v1)
 
-Enclosure, robotics, refrigeration, and physical security design · the insurer's own systems · back-office ERP and procurement · delivery of any kind · real professional-registry, EDA, Ministry, Surescripts or pharmacy-network integration · controlled/narcotic prescribing in AutoDoc.
+Enclosure, robotics, refrigeration, physical security design, and the hardware team's maintenance mode/technician interface · the insurer's own systems · back-office ERP and procurement · delivery of any kind · real professional-registry, EDA, Ministry, Surescripts or pharmacy-network integration · controlled/narcotic prescribing in Advisor · a dedicated H.A.V.E Operation frontend.
