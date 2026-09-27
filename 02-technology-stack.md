@@ -1,10 +1,10 @@
 # H.A.V.E — Technology Stack and Architecture
 
-**Version:** 1.3
+**Version:** 1.4
 
 **Status:** Confirmed
 
-**Date:** 22 September 2026
+**Date:** 27 September 2026
 **Related specification:** `01-requirements.md`
 
 ---
@@ -18,6 +18,7 @@ AutoPharm will use a **modular monolith** architecture with three independent Re
 | H.A.V.E Terminal (kiosk) | React + Vite |
 | H.A.V.E Advisor (doctor) | React + Vite |
 | H.A.V.E Hub (customer) | React + Vite |
+| Owner approval dashboard | Small restricted Django dashboard; doctor approval only |
 | Frontend language | TypeScript only for application and shared-package source code |
 | Styling | Tailwind CSS plus a shared AutoPharm design system |
 | Backend | Python + Django + Django REST Framework |
@@ -92,18 +93,20 @@ It shares AutoPharm's visual identity, but it has:
 
 Its initial scope is deliberately narrow:
 
-- Doctor signup, owner-code approval, login, and MFA.
+- Doctor signup, owner-dashboard approval, login, and MFA (login MFA remains separate from signup approval).
 - Patient identity and phone-number entry, without requiring an existing customer account.
 - Structured prescription issue as one doctor action.
 - Prescription revocation.
 - Current and previous prescription status.
-- A waiting-for-approval screen until the doctor enters the owner-shared code.
+- A waiting-for-approval screen until the owner approves the application.
 
-Advisor connects to Terminal and Hub only through the central backend. An issued prescription addressed to a phone number may remain unclaimed until the customer registers or signs in, proves control of the number, passes patient-detail matching, and explicitly claims it.
+Advisor connects to Terminal and Hub only through the central backend. An issued prescription addressed to a phone number may remain unclaimed until the customer registers or signs in, proves control of the exact assigned number, and explicitly claims it under the academic account-priority rule.
 
 Advisor submits a structured prescription—not a PDF or image upload—as the authoritative clinical record. The payload contains the intended patient's identifying details and canonical phone number, doctor, clinic, issue and expiry timestamps, medicine identifiers, dosage instructions, quantities, refill rules, and signature metadata. The customer-account link is established only after a safe claim. A rendered PDF may be generated for reading, but it is never the source of truth.
 
-No clinical assistant, delegated draft, invitation flow, or admin page is part of Advisor. The owner reviews doctor signup information through a fixed email address and shares the single-use activation code directly with an approved doctor. The code is never exposed to the applicant by the app; the password is never included in the approval email. Activation and prescribing authorization are enforced by Django.
+No clinical assistant, delegated draft, or invitation flow is part of Advisor. A small secured owner-only approval dashboard is served by the central Django backend, not a fourth public frontend or the deferred Operation app. The owner receives a signup notification, reviews the application in the dashboard, and approves or rejects it directly. No activation-code exchange or approval-code table is required. A restricted Django admin view is the preferred starting point; expose only the approval functionality, not general platform editing. Owner credentials are provisioned outside public signup. Activation and prescribing authorization are enforced by Django.
+
+An approved doctor may look up a customer by exact canonical phone number to autofill minimum patient identity fields. Without an existing customer, the doctor enters them manually. For the academic build, verified control of the exact assigned phone plus explicit claim permits linking even when manually entered names/DOB differ. Linked customer names and DOB replace working/displayed values; the originally assigned prescription phone is never overwritten from the account. Retain the issued snapshot separately. Phone verification is not proof of clinical identity; document the real-world misassignment risk.
 
 ### 3.3 H.A.V.E Hub
 
@@ -302,11 +305,10 @@ backend/
     receipts/
     notifications/
     terminals/
-    audit/
     integrations/
 ```
 
-This is a possible domain decomposition, not a commitment to one Django app or table per line. There is no platform admin page, clinical-assistant subsystem, or technician-maintenance app in the software scope. Doctor applications are approved by an owner-controlled code delivered to a configured email address; hardware collaborators own maintenance mode.
+This is a possible domain decomposition, not a commitment to one Django app or table per line. A small owner-only doctor-approval dashboard is in scope, but a general operations/admin frontend, clinical-assistant subsystem, and technician-maintenance app are not. Hardware collaborators own maintenance mode.
 
 Microservices are explicitly rejected for the graduation-project scope. They would add deployment, distributed authentication, network failure, logging, and transaction complexity without providing a useful benefit to a five-person team.
 
@@ -692,7 +694,13 @@ Database rules should enforce important invariants in addition to application va
 - UTC timestamps at rest.
 - UUIDs or similarly non-enumerable public identifiers at API boundaries.
 
-Audit records are append-only from the application's perspective. Corrections create new events; they do not rewrite historical prescription, payment, dispense, or privilege actions.
+Preserve issued prescription snapshots and financial/dispensing outcomes in domain records. Restricted structured logs record security actions without secrets or unnecessary health data. No separate generic audit-events table is required by the simplified ERD.
+
+Customer and doctor accounts are separate even for the same person. Readable primary keys use `HAV-C887-000000000001` / `HAV-D887-000000000002`, with the phone suffix captured at creation and a database sequence guaranteeing uniqueness. Keys never change with phone updates and never grant authorization. Phone and case-insensitive email are each unique within account type. Authentication selects the app's expected account type; prescription lookup selects customers only. A privately provisioned OWNER type/profile supports the restricted Django admin; it has no public registration.
+
+Mock insurance uses customer activations, covered-product links, expiry, a configurable percentage defaulting to 75%, and a monthly-use limit. Orders retain applied coverage and usage evidence. No insurance-plan catalogue, insurer gateway, or separate claims table is required.
+
+Guidance rules, bilingual questions, safety checks, ranking, and explanations live in versioned application configuration files. Products carry symptom tags; no dedicated guidance database tables or persisted customer symptom answers are required. Tags alone do not constitute safe recommendation logic.
 
 ### 8.2 Supabase boundary
 
@@ -748,7 +756,7 @@ Candidate jobs include:
 - Receipt and PDF generation.
 - Simulated ETA e-receipt submission.
 - Simulated EPTTS events.
-- Insurance requests.
+- Mock insurance eligibility is evaluated locally during checkout, not through an insurer-request job.
 - Alert dispatch.
 - Stock-reservation expiry.
 - Failed-dispense reconciliation.
@@ -764,26 +772,11 @@ Every critical job should carry:
 - Exponential backoff.
 - Last-error details.
 - A terminal failed/dead-letter state.
-- Visibility through structured logs and internal diagnostics (no admin page).
+- Visibility through structured logs and internal diagnostics; the owner dashboard is limited to doctor approvals.
 
 Celery is a delivery mechanism, not the source of truth. Critical work must first be represented by a durable database record.
 
-Use a transactional outbox for work that must be emitted after a successful database change:
-
-```text
-Database transaction
-  1. update order/prescription state
-  2. insert outbox event
-  3. commit
-
-Outbox dispatcher
-  4. publish or execute job
-  5. record delivery result
-```
-
-This prevents a successful sale from being committed while its required receipt, ETA submission, or reconciliation task is silently lost between the database commit and Celery publication. Consumers must still be idempotent because delivery may occur more than once.
-
-Use `transaction.on_commit()` for convenience notifications that can be regenerated. Use the persisted outbox for events whose loss would violate a functional, financial, audit, or regulatory requirement.
+The simplified design does not introduce a generic transactional-outbox table. Schedule background work after commit with `transaction.on_commit()`. This alone cannot guarantee delivery if the process stops between commit and queue publication. Required receipt/submission work must therefore be recoverable from pending domain records, with a periodic retry process and idempotent consumers. Noncritical notification failures may be retried without blocking approval or checkout.
 
 Celery and Redis should be introduced after the core Django API and data model are stable, not during the first project setup commit.
 
@@ -878,9 +871,9 @@ The central backend owns all authentication and authorization. Different actors 
 ### 11.3 Advisor doctor
 
 - Public doctor signup creates a pending account with identity/contact and professional details plus a strong password.
-- A single-use, expiring approval code goes only to the configured project-owner email. The owner reviews the application and shares the code with an accepted doctor outside Advisor; there is no admin page.
-- Pending sign-in shows **Waiting for Approval** and offers code entry, without doctor-function access. The backend activates only after the correct code is submitted and enforces rate limits and code replacement rules.
-- TOTP MFA for the academic implementation. The signup approval code does not replace login MFA.
+- Signup sends an application notification to the configured owner email. The owner approves or rejects through the secured owner-only dashboard; no activation code is required.
+- Pending sign-in shows **Waiting for Approval** without doctor-function access. Only an owner-authorized approval activates the account.
+- Doctor login uses TOTP MFA with an existing authenticator app. Advisor supplies enrollment and code-entry screens; no fourth frontend is built. Store the enrollment secret encrypted, not as a temporary email OTP.
 - Only an active authorized doctor can issue or revoke a prescription; recent authentication or reauthentication is required for issuing.
 - No assistant, organization-admin, delegated draft, or simulated professional-registry flow.
 
@@ -888,11 +881,24 @@ The central backend owns all authentication and authorization. Different actors 
 
 The backend owns customer and doctor identities and applies separate authentication policies to each. A customer uses a mobile number and PIN; a doctor uses a stronger password, MFA, and pending/active account status. Password and PIN credentials must be hashed and never overloaded into one field. The eventual ERD determines whether these identities share a base user table or use separate models; this document does not pre-empt that design choice.
 
-Prescription issue and claim are different operations: a doctor may issue to an intended patient identified by canonical phone number and recorded patient details before any customer account exists. The backend retains that prescription as unclaimed and non-dispensable. A customer must verify phone control, pass the patient-detail checks, and explicitly claim it before either Terminal or Hub may display its contents. Typed phone numbers alone are not authorization, and ambiguous claims require review.
+Prescription issue and claim are different operations: a doctor may issue to an intended patient identified by canonical phone number and recorded details before any customer account exists. The backend retains the prescription as unclaimed and non-dispensable. A customer must verify control of the exact assigned phone and explicitly claim it before Terminal or Hub may display its contents. Working names/DOB then use customer account data, even when manual entries differ; the original assignment phone stays fixed. Typed numbers alone are not authorization, and conflicting account links or disputes require review.
+
+Hub and Advisor shall use 15-minute access tokens and PostgreSQL refresh-token records. Remember Me selects a 7-day absolute refresh-session lifetime; otherwise it is 1 day. Rotation must not restart that lifetime. Redis may cache active-session information, keyed by a token hash or opaque session identifier, never the raw refresh secret. The following security mechanics are accepted for implementation:
+
+- PostgreSQL is authoritative for refresh-token validity; a Redis entry alone never overrides revocation, expiry, disabled accounts, or pending/rejected doctor status.
+- Validate access tokens on the backend, including signature, expiry, audience, account/session permissions, and revocation policy. A frontend quick-check is only a user-experience optimization.
+- Rotate refresh tokens atomically on use. Track replacement/revocation so replay of an already-used token can revoke the affected session family; retain the necessary tombstone metadata until expiry rather than deleting all replay evidence.
+- Logout clears the refresh cookie and client access token, invalidates the server refresh session and Redis entry, and rejects outstanding access tokens from that session through a server-side revocation check on protected requests.
+- Protect browser refresh credentials with Secure, HttpOnly cookies and appropriate SameSite/CSRF controls; access tokens should not become persistent localStorage credentials.
+- Redis failures shall not bypass expiry or revocation. Use authoritative PostgreSQL fallback for personal-app token validity where available; fail closed when a required temporary Terminal session or security challenge cannot be verified.
+
+Terminal sessions have 70-second inactivity expiry and a fixed 10-minute maximum, no Remember Me, and no long-lived refresh credential. Backend-enforced expiry is independent of the 15-minute personal-app access-token lifetime. Background polling/refresh does not count as user activity. An in-flight irreversible operation may finish safely while personal-screen access is locked; expiry does not authorize another purchase or abandon reconciliation.
+
+The accepted dashboard is restricted Django admin with native server-side Django sessions, not JWT access/refresh tokens. Enforce 10-minute inactivity expiry and a 2-hour absolute maximum with no Remember Me. A privately provisioned owner profile holds its password hash; the shared identity is staff-enabled, and backend permissions limit the dashboard to doctor approval. Django session records and framework metadata are infrastructure, distinct from Hub/Advisor refresh-token records.
 
 ### 11.5 Terminal identity
 
-A kiosk terminal is a machine principal, not a human user. Each installation receives a unique terminal ID and revocable cryptographic credential.
+A kiosk terminal is a machine principal, not a human user. Use one protected per-terminal credential and store its hash on the terminal record, not in a separate credentials table. The device agent holds the raw credential securely; human admin login does not authenticate unattended machine reports. `is_disabled` defaults to false and blocks terminal trading/device authority when set. Replace a compromised credential to invalidate it. Heartbeat freshness remains transient Redis state, not a required `last_seen_at` column.
 
 The backend binds customer session tokens to:
 
@@ -976,7 +982,7 @@ The backend must tolerate duplicated events and process each event ID once. Conf
 
 All services use structured JSON logs with correlation IDs spanning API request, order, payment, hardware command, dispense, background job, and reconciliation event.
 
-The software team shall be able to inspect these operational signals through logs, metrics, and development diagnostics; this does not imply a platform admin page:
+The software team shall inspect operational signals through logs, metrics, and development diagnostics. The small owner-dashboard scope is doctor approval, not general operations:
 
 - Backend and database health.
 - Terminal heartbeat and last-seen time.
@@ -985,7 +991,7 @@ The software team shall be able to inspect these operational signals through log
 - Payment and dispensing anomalies.
 - Low stock and expired batches.
 - Failed ETA/EPTTS simulations.
-- Audit events for privileged actions.
+- Restricted security logs and domain records for privileged actions.
 
 Metrics must use anonymous or operational identifiers and must not contain personal or health data.
 
@@ -1072,10 +1078,10 @@ At minimum, automated tests should cover:
 
 - Patient authentication and lockout.
 - Customer signup through both Terminal and Hub, with one central account.
-- Doctor signup, owner-email code delivery, pending sign-in, rate limits, expiry/replacement, and activation.
+- Doctor signup, owner notification, pending sign-in, owner-only dashboard access, approval/rejection, and prescribing-access enforcement.
 - Prescribing-permission enforcement.
 - Issue of an unclaimed prescription before any customer account exists.
-- Verified-phone and patient-detail claim checks, including mismatches and duplicate/ambiguous claims.
+- Verified exact-phone claim checks, account-priority name/DOB replacement, unchanged assignment phone, and rejection of duplicate/conflicting or disputed claims.
 - Prescription expiry and revocation.
 - Atomic partial dispensing.
 - Prevention of double dispensing.
@@ -1086,7 +1092,7 @@ At minimum, automated tests should cover:
 - Hub location lookup and timestamped per-Terminal stock availability.
 - Timeout after payment authorization and before/after dispense confirmation.
 - Failed dispense and refund reconciliation.
-- Transactional-outbox redelivery and duplicate-event handling.
+- Recovery of pending domain-record jobs after queue-publication failure and duplicate-job handling.
 - Power-loss recovery from each irreversible workflow state.
 - Offline OTC cash sale synchronization after reconnect.
 - Rejection of prescription, account, insurance, and digital-payment flows while offline.
@@ -1190,17 +1196,17 @@ The version should be available in:
 
 1. Create the monorepo and development tooling.
 2. Create Django, PostgreSQL, the initial domain model, and only the core interfaces justified by external or replaceable boundaries.
-3. Define identity, terminal identity, audit events, idempotency records, and state-machine conventions.
+3. Define identity/session policies, terminal identity, domain-history/logging requirements, idempotency records, and minimal state conventions.
 4. Establish OpenAPI and the shared frontend API client.
 5. Create the shared design tokens and core UI components.
 6. Create Terminal, Advisor, and Hub React shells, with shared design tokens and API contracts. Terminal adds Arabic/English, RTL, and explicit offline capability guards.
 7. Implement customer accounts, phone verification, Terminal sessions, and Hub sessions.
-8. Implement doctor signup, owner-email approval code, pending state, MFA, and prescribing authorization.
+8. Implement doctor signup, owner-only approval dashboard, pending state, the agreed login-MFA policy, and prescribing authorization.
 9. Implement phone-addressed prescription issue, secure claim, retrieval, and revocation.
 10. Implement catalogue, per-Terminal inventory, location lookup, cart, reservations, and safe local catalogue snapshots.
 11. Implement order, payment (including simulated provider-backed saved methods), and dispensing process states with idempotency and compensation.
 12. Add the authenticated local device-agent integration contract, durable journal, mocks, and recovery path with the hardware collaborators; their maintenance mode is out of this software scope.
-13. Add Celery/Redis and the transactional outbox for notifications, receipts, and simulated integrations.
+13. Add Celery/Redis and recoverable domain-record jobs for notifications, receipts, and simulated integrations; no generic outbox table.
 14. Complete insurance, receipts, ETA, monitoring, and designed failure states.
 15. Rehearse local/LAN demo deployment, restore from backup, power-loss recovery, and network loss.
 16. Harden, test, complete accessibility review, and release `1.0.0`.
@@ -1219,7 +1225,7 @@ PostgreSQL hosted on Supabase
 Celery + Redis
 Authenticated local Python kiosk device agent
 Pragmatic SOLID + dependency inversion + composition
-Explicit state machines + idempotency + transactional outbox
+Minimal workflow states + idempotency + recoverable domain-record jobs
 Non-sensitive offline cache + durable recovery journal
 GitHub monorepo + Semantic Versioning
 ```
